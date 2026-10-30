@@ -1,9 +1,8 @@
 # GODT Backend
 
 Base técnica del backend de GODT Regional 3. Este entregable cubre la
-infraestructura local, la fundación técnica del Sprint 0 y el modelo relacional
-inicial validado contra el documento de arquitectura. No incluye todavía los
-casos de uso clínicos completos.
+infraestructura local, Sprint 1 y el flujo técnico de gestión documental/OCR
+de Sprint 2. No declara homologación clínica, jurídica o institucional.
 
 ## Diagnóstico y alcance de Sprint 0
 
@@ -68,6 +67,9 @@ El modelo relacional validado y sus diferencias documentales se describen en
    ```powershell
    npm run start:dev
    ```
+
+Los documentos se guardan en `DOCUMENT_STORAGE_PATH` (privado y excluido de
+Git). Redis debe estar disponible para que el worker BullMQ procese OCR.
 
 El health check estará disponible en `http://localhost:3000/health` y Swagger
 en `http://localhost:3000/docs`.
@@ -145,11 +147,11 @@ Validado localmente:
 - Redis 7.4: contenedor `healthy`, `PONG` y datos conservados después del
   reinicio.
 - pgAdmin 4: contenedor activo en `http://localhost:5050`.
-- Prisma: dos migraciones desplegadas contra PostgreSQL real y sin cambios
+- Prisma: cinco migraciones desplegadas contra PostgreSQL real y sin cambios
   pendientes.
 - NestJS: `GET /health` respondió `status=ok`, `database=up` y `redis=up`.
 - Swagger: `GET /docs` respondió HTTP 200.
-- Jest: 11 pruebas unitarias pasadas. Integración PostgreSQL: 3 pruebas
+- Jest: 14 pruebas unitarias pasadas. Integración PostgreSQL: 3 pruebas
   pasadas, incluyendo rollback de auditoría y legalización atómica. Build,
   ESLint y Prettier: correctos.
 - `npm audit fix` fue ejecutado sin `--force`. Permanecen vulnerabilidades
@@ -164,3 +166,8 @@ institucional de usuarios siguen pendientes de homologación.
 
 El estado y las decisiones de Sprint 1 están documentados en
 [`docs/sprint-1.md`](./docs/sprint-1.md).
+El flujo documental y OCR está documentado en
+[`docs/sprint-2.md`](./docs/sprint-2.md).
+Sprint 2 no se declara cerrado: Tesseract todavía no transforma su salida en
+candidatos canónicos y el OCR de PDF multipágina requiere un adaptador seguro
+de rasterización.

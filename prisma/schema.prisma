@@ -189,6 +189,7 @@ model SourceDocument {
 
   @@index([donorId, uploadedAt])
   @@index([sha256Hash])
+  @@unique([donorId, sha256Hash])
   @@map("SOURCE_DOCUMENT")
 }
 

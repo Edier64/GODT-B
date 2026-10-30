@@ -32,3 +32,4 @@ lerna-debug.log*
 # Docker local data and backups
 /docker/pgadmin/
 /backups/
+/storage/
