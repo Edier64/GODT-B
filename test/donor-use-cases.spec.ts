@@ -27,6 +27,7 @@ describe("Donor use cases", () => {
       findById: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      updateWithAudit: jest.fn(),
     };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const useCase = new CreateDonorUseCase(repository, audit);
@@ -53,6 +54,7 @@ describe("Donor use cases", () => {
       findById: jest.fn().mockResolvedValue(donor),
       findMany: jest.fn(),
       update: jest.fn(),
+      updateWithAudit: jest.fn(),
     };
     const useCase = new GetDonorUseCase(repository);
 

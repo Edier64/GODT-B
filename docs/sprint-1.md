@@ -6,27 +6,30 @@
 - `GET /api/v1/donors`: lista paginada con filtro por RND y estado.
 - `GET /api/v1/donors/:id`: consulta con control de alcance.
 - `PATCH /api/v1/donors/:id`: actualiza únicamente datos permitidos.
-- JWT Bearer obligatorio en los endpoints de expediente.
-- Auditoría de creación del expediente.
+- `POST /api/v1/donors/:id/legalization`: evalúa y registra legalización.
+- JWT Bearer en los endpoints de expediente y legalización.
+- Auditoría transaccional de creación, actualización y legalización.
 - Motor declarativo de mapeo canónico (`CanonicalMappingService`).
 - Política determinista de anonimización (`AnonymizationPolicy`).
 
 La autenticación valida tokens emitidos por el proveedor institucional o por
 un servicio compatible, usando `JWT_SECRET` y `JWT_ISSUER`. No se implementa
-un endpoint local que emita tokens arbitrarios.
+un endpoint local que emita tokens arbitrarios. El claim opcional
+`institutionalIps` limita el acceso por IPS; `ADMIN` mantiene alcance global.
 
 ## Matriz de permisos provisional
 
-| Acción | ADMIN | COORDINATOR | SURGEON | TECHNICIAN |
-|---|---:|---:|---:|---:|
-| Crear expediente | Sí | Sí | Sí | Sí |
-| Listar expedientes | Todos | Todos | Propios | Propios |
-| Consultar expediente | Todos | Todos | Propios | Propios |
-| Actualizar expediente | Todos | Todos | Propios | Propios |
+| Rol | Acción | Recurso | Alcance |
+|---|---|---|---|
+| ADMIN | Crear, listar, consultar, actualizar | Expediente | Todas las IPS |
+| COORDINATOR | Crear, listar, consultar, actualizar, legalizar | Expediente/legalización | IPS incluidas en `institutionalIps` |
+| SURGEON | Crear, listar, consultar, actualizar | Expediente | IPS incluidas en `institutionalIps` |
+| TECHNICIAN | Crear, listar, consultar, actualizar | Expediente | IPS incluidas en `institutionalIps` |
 
-“Propios” significa expediente cuyo `createdById` coincide con el sujeto JWT.
-Esta es una política técnica provisional: el alcance por IPS y las
-asignaciones institucionales requieren confirmación funcional.
+El propietario del expediente no sustituye la asignación institucional. La
+autenticación JWT, la autorización por rol y el alcance por IPS son controles
+separados. La asignación oficial de usuarios a IPS aún debe ser suministrada
+por el proveedor institucional.
 
 ## Privacidad y Anexo 4
 
@@ -35,13 +38,37 @@ conocidas incluso dentro de estructuras JSON anidadas. No usa IA, frontend ni
 ocultamiento visual. La prueba negativa verifica que nombre, documento y
 contacto no aparecen en la salida.
 
-## Pendientes que bloquean el cierre completo
+## Legalización Anexo 2 y Anexo 3
 
-- Validar clínico-jurídicamente las reglas de legalización Anexo 2/3.
-- Implementar el mínimo condicional de dos representantes en el caso de uso de
-  legalización.
-- Conectar el diccionario canónico a los formatos oficiales INS disponibles.
-- Añadir actualización de expediente dentro de una transacción con auditoría
-  cuando se formalicen los casos de uso de modificación.
-- Integrar el proveedor institucional de identidad/JWKS en lugar de secretos
-  locales cuando se defina el entorno de despliegue.
+La política técnica provisional implementa:
+
+- Anexo 2 (`PRESUNCION_LEGAL`): adulto colombiano sin oposición registrada.
+- Anexo 3 (`CONSENTIMIENTO_FAMILIAR`): menor de edad o extranjero no residente,
+  con mínimo de dos representantes.
+
+La cantidad de representantes se valida en dominio y la creación de la
+legalización, representantes y auditoría se ejecuta en una transacción. La
+política no se considera homologación clínica o jurídica.
+
+## Estado de cierre
+
+### Implementado y probado
+
+- CRUD de donantes con RND e IPS obligatorios.
+- Control RBAC y alcance institucional por `institutionalIps`.
+- Legalización Anexo 2/3 y validación de representantes.
+- Auditoría de creación, modificación y legalización.
+- Rollback de actualización cuando falla la auditoría.
+- Anonimización determinista y pruebas de lista blanca.
+- Pruebas unitarias, integración con PostgreSQL, build, lint y formato.
+
+### Implementado, pero pendiente de validación institucional
+
+- Reglas jurídicas definitivas de Anexo 2 y Anexo 3.
+- Catálogo oficial de roles, asignaciones por IPS y proveedor JWT/JWKS.
+- Diccionario canónico contra los formatos oficiales INS.
+
+### Fuera del alcance de Sprint 1
+
+- OCR, almacenamiento documental, plantillas, PDF y procedimientos de
+  recuperación. Estos corresponden a Sprint 2/3 y no fueron modificados.

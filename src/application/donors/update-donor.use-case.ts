@@ -20,11 +20,19 @@ export class UpdateDonorUseCase {
       throw new DonorNotFoundError(id);
     }
     if (
-      !["ADMIN", "COORDINATOR"].includes(actor.role) &&
-      existing.createdById !== actor.userId
+      actor.role !== "ADMIN" &&
+      (!actor.institutionalIps ||
+        !actor.institutionalIps.includes(existing.originatingIpsName))
     ) {
       throw new DonorAccessDeniedError();
     }
-    return this.repository.update(id, input);
+    return this.repository.updateWithAudit(id, input, {
+      actorUserId: actor.userId,
+      action: "DONOR_UPDATED",
+      entityType: "DONOR_RECORD",
+      entityId: id,
+      correlationId: id,
+      metadata: { changedFields: Object.keys(input) },
+    });
   }
 }

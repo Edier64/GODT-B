@@ -146,6 +146,8 @@ model DonationLegalization {
   rndCheckReference    String?                  @map("rnd_check_reference") @db.VarChar(200)
   familyNotificationAt DateTime?                @map("family_notification_at") @db.Timestamptz(6)
   status               String                   @db.VarChar(50)
+  createdAt            DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
   donor                DonorRecord              @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   officerInCharge      SystemUser               @relation("LegalizationOfficer", fields: [officerInChargeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   representatives      DonationRepresentative[]

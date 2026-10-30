@@ -26,6 +26,7 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<{
         sub?: string;
         role?: UserRole;
+        institutionalIps?: unknown;
       }>(authorization.slice("Bearer ".length));
       if (
         !payload.sub ||
@@ -34,7 +35,20 @@ export class JwtAuthGuard implements CanActivate {
       ) {
         throw new UnauthorizedException("JWT payload is invalid");
       }
-      request.user = { userId: payload.sub, role: payload.role };
+      if (
+        payload.institutionalIps !== undefined &&
+        (!Array.isArray(payload.institutionalIps) ||
+          !payload.institutionalIps.every(
+            (value): value is string => typeof value === "string",
+          ))
+      ) {
+        throw new UnauthorizedException("JWT institutional scope is invalid");
+      }
+      request.user = {
+        userId: payload.sub,
+        role: payload.role,
+        institutionalIps: payload.institutionalIps,
+      };
       return true;
     } catch (error) {
       if (error instanceof UnauthorizedException) {

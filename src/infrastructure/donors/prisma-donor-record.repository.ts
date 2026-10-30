@@ -8,6 +8,7 @@ import {
 } from "../../domain/donors/donor-record";
 import { PrismaService } from "../prisma/prisma.service";
 import { DonorRecordRepository } from "../../application/donors/donor-record.repository";
+import { AuditEventInput } from "../../application/audit/audit-event.port";
 
 @Injectable()
 export class PrismaDonorRecordRepository implements DonorRecordRepository {
@@ -43,6 +44,7 @@ export class PrismaDonorRecordRepository implements DonorRecordRepository {
     status?: DonorRecordStatus;
     rndCode?: string;
     createdById?: string;
+    institutionalIps?: string[];
     page: number;
     pageSize: number;
   }): Promise<{ items: DonorRecord[]; total: number }> {
@@ -52,6 +54,9 @@ export class PrismaDonorRecordRepository implements DonorRecordRepository {
         ? { contains: input.rndCode, mode: "insensitive" }
         : undefined,
       createdById: input.createdById,
+      originatingIpsName: input.institutionalIps?.length
+        ? { in: input.institutionalIps }
+        : undefined,
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.donorRecord.findMany({
@@ -73,5 +78,29 @@ export class PrismaDonorRecordRepository implements DonorRecordRepository {
       where: { id },
       data: input as Prisma.DonorRecordUpdateInput,
     }) as Promise<DonorRecord>;
+  }
+
+  async updateWithAudit(
+    id: string,
+    input: UpdateDonorRecordInput,
+    audit: AuditEventInput,
+  ): Promise<DonorRecord> {
+    return this.prisma.$transaction(async (transaction) => {
+      const donor = await transaction.donorRecord.update({
+        where: { id },
+        data: input as Prisma.DonorRecordUpdateInput,
+      });
+      await transaction.auditEvent.create({
+        data: {
+          actorUserId: audit.actorUserId,
+          action: audit.action,
+          entityType: audit.entityType,
+          entityId: audit.entityId,
+          correlationId: audit.correlationId,
+          metadata: audit.metadata as Prisma.InputJsonValue | undefined,
+        },
+      });
+      return donor as DonorRecord;
+    });
   }
 }

@@ -24,9 +24,8 @@ export class ListDonorsUseCase {
   ) {
     return this.repository.findMany({
       ...input,
-      createdById: ["ADMIN", "COORDINATOR"].includes(actor.role)
-        ? undefined
-        : actor.userId,
+      institutionalIps:
+        actor.role === "ADMIN" ? undefined : actor.institutionalIps,
     });
   }
 }

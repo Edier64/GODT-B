@@ -30,10 +30,9 @@ flowchart LR
 ```
 
 La estructura inicial separa `src/health` como superficie de presentación y
-aplicación mínima, y `src/infrastructure/prisma` como adaptador de persistencia.
-Cuando se entregue el ERD oficial, las entidades, PK/FK, cardinalidades,
-índices, restricciones, estados y estrategia de retención se documentarán antes
-de generar la primera migración clínica.
+aplicación mínima y `src/infrastructure/prisma` como adaptador de persistencia.
+El modelo relacional validado y sus diferencias documentales se describen en
+[`docs/data-model-validation.md`](./docs/data-model-validation.md).
 
 ## Requisitos
 
@@ -150,15 +149,18 @@ Validado localmente:
   pendientes.
 - NestJS: `GET /health` respondió `status=ok`, `database=up` y `redis=up`.
 - Swagger: `GET /docs` respondió HTTP 200.
-- Jest, integración, build, ESLint y Prettier: correctos.
+- Jest: 11 pruebas unitarias pasadas. Integración PostgreSQL: 3 pruebas
+  pasadas, incluyendo rollback de auditoría y legalización atómica. Build,
+  ESLint y Prettier: correctos.
 - `npm audit fix` fue ejecutado sin `--force`. Permanecen vulnerabilidades
   transitivas en Jest/CLI/Prisma y vulnerabilidades de runtime asociadas a
   Multer, `js-yaml` y Prisma; sus correcciones disponibles requieren cambios
   mayores o aún no tienen una actualización compatible con NestJS 11/Prisma 6.
 
 Las restricciones de mínimo dos representantes para Anexo 3 y la validación de
-metadata de auditoría permanecen como reglas de aplicación pendientes; una FK
-no puede garantizar ninguna de ellas.
+metadata de auditoría están implementadas en dominio/aplicación; una FK no
+puede garantizar ninguna de ellas. Las reglas jurídicas y la asignación
+institucional de usuarios siguen pendientes de homologación.
 
 El estado y las decisiones de Sprint 1 están documentados en
 [`docs/sprint-1.md`](./docs/sprint-1.md).

@@ -15,6 +15,21 @@ export class PrismaAuditEventAdapter implements AuditEventPort {
     correlationId: string;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
+    const serialized = JSON.stringify(input.metadata ?? {});
+    for (const forbidden of [
+      "fullName",
+      "full_name",
+      "documentNumber",
+      "document_number",
+      "clinicalData",
+      "clinical_data",
+      "candidateValue",
+      "candidate_value",
+    ]) {
+      if (serialized.includes(`"${forbidden}"`)) {
+        throw new Error("Audit metadata contains a forbidden sensitive field");
+      }
+    }
     await this.prisma.auditEvent.create({
       data: {
         actorUserId: input.actorUserId,

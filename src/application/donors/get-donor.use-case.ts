@@ -9,6 +9,7 @@ import { DonorRecord } from "../../domain/donors/donor-record";
 export interface DonorActor {
   userId: string;
   role: "COORDINATOR" | "SURGEON" | "TECHNICIAN" | "ADMIN";
+  institutionalIps?: string[];
 }
 
 @Injectable()
@@ -24,8 +25,9 @@ export class GetDonorUseCase {
       throw new DonorNotFoundError(id);
     }
     if (
-      !["ADMIN", "COORDINATOR"].includes(actor.role) &&
-      donor.createdById !== actor.userId
+      actor.role !== "ADMIN" &&
+      (!actor.institutionalIps ||
+        !actor.institutionalIps.includes(donor.originatingIpsName))
     ) {
       throw new DonorAccessDeniedError();
     }
