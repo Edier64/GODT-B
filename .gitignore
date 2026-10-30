@@ -18,7 +18,17 @@ lerna-debug.log*
 .env.development
 .env.test
 .env.production
+.env.docker
+.env.*.local
+
+# Prisma
+/prisma/*.db
+/prisma/*.db-journal
 
 # temp directory
 .temp
 .tmp
+
+# Docker local data and backups
+/docker/pgadmin/
+/backups/

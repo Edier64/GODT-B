@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  COORDINATOR
+  SURGEON
+  TECHNICIAN
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum DonorRecordStatus {
+  EN_VALORACION
+  ACTIVO
+  CERRADO
+
+  @@map("donor_record_status")
+}
+
+enum BrainDeathCertificationStatus {
+  BORRADOR
+  CERTIFICADA
+
+  @@map("brain_death_certification_status")
+}
+
+enum LegalizationMechanism {
+  PRESUNCION_LEGAL
+  CONSENTIMIENTO_FAMILIAR
+
+  @@map("legalization_mechanism")
+}
+
+enum OcrJobStatus {
+  EN_COLA
+  COMPLETADO
+  FALLIDO
+
+  @@map("ocr_job_status")
+}
+
+enum OcrValidationStatus {
+  PENDIENTE
+  CONFIRMADO
+  MODIFICADO
+  RECHAZADO
+
+  @@map("ocr_validation_status")
+}
+
+enum TissueCategory {
+  OCULAR
+  CARDIOVASCULAR
+  OSTEOMUSCULAR
+  PIEL
+
+  @@map("tissue_category")
+}
+
+model SystemUser {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  email                 String                    @unique @db.VarChar(320)
+  fullName              String                    @map("full_name") @db.VarChar(200)
+  professionalId        String?                   @map("professional_id") @db.VarChar(100)
+  role                  UserRole
+  isActive              Boolean                   @default(true) @map("is_active")
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  donorRecordsCreated   DonorRecord[]             @relation("DonorCreatedBy")
+  certificationsPrimary BrainDeathCertification[] @relation("PrimaryCertifier")
+  certificationsSecond  BrainDeathCertification[] @relation("SecondCertifier")
+  legalizations         DonationLegalization[]    @relation("LegalizationOfficer")
+  documentsUploaded     SourceDocument[]          @relation("DocumentUploader")
+  ocrJobsRequested      OcrProcessingJob[]        @relation("OcrRequester")
+  ocrFieldsValidated    OcrExtractedField[]       @relation("OcrValidator")
+  surgeriesLed          OrganRecoverySurgery[]    @relation("LeadSurgeonSurgery")
+  tissueAsTechnician    TissueRecoveryProcedure[] @relation("TissueTechnician")
+  tissueAsSurgeon       TissueRecoveryProcedure[] @relation("TissueSurgeon")
+  templateVersionsAuth  TemplateVersion[]         @relation("TemplateAuthorizer")
+  generatedDocuments    GeneratedPdfDocument[]    @relation("DocumentGenerator")
+  approvedDocuments     GeneratedPdfDocument[]    @relation("DocumentApprover")
+  auditEvents           AuditEvent[]              @relation("AuditActor")
+
+  @@map("SYSTEM_USER")
+}
+
+model DonorRecord {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  rndCode                 String                    @unique @map("rnd_code") @db.VarChar(100)
+  status                  DonorRecordStatus
+  originatingIpsName      String                    @map("originating_ips_name") @db.VarChar(200)
+  clinicalService         String                    @map("clinical_service") @db.VarChar(200)
+  fullName                String                    @map("full_name") @db.VarChar(200)
+  documentNumber          String                    @map("document_number") @db.VarChar(100)
+  anthropometry           Json?
+  bloodGroup              String?                   @map("blood_group") @db.VarChar(20)
+  rhFactor                String?                   @map("rh_factor") @db.VarChar(20)
+  clinicalData            Json?                     @map("clinical_data")
+  createdById             String                    @map("created_by") @db.Uuid
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy               SystemUser                @relation("DonorCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  brainDeathCertification BrainDeathCertification?
+  donationLegalization    DonationLegalization?
+  sourceDocuments         SourceDocument[]
+  ocrFields               OcrExtractedField[]
+  organSurgeries          OrganRecoverySurgery[]
+  tissueProcedures        TissueRecoveryProcedure[]
+  generatedDocuments      GeneratedPdfDocument[]
+
+  @@index([status])
+  @@index([documentNumber])
+  @@map("DONOR_RECORD")
+}
+
+model BrainDeathCertification {
+  id                     String                        @id @default(uuid()) @db.Uuid
+  donorId                String                        @unique @map("donor_id") @db.Uuid
+  certifyingPhysicianId  String                        @map("certifying_physician_id") @db.Uuid
+  secondPhysicianId      String                        @map("second_physician_id") @db.Uuid
+  evaluationStartedAt    DateTime?                     @map("evaluation_started_at") @db.Timestamptz(6)
+  diagnosisConfirmedAt   DateTime?                     @map("diagnosis_confirmed_at") @db.Timestamptz(6)
+  apneaTestResult        Json?                         @map("apnea_test_result")
+  confirmatoryTestResult Json?                         @map("confirmatory_test_result")
+  status                 BrainDeathCertificationStatus
+  donor                  DonorRecord                   @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  certifyingPhysician    SystemUser                    @relation("PrimaryCertifier", fields: [certifyingPhysicianId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  secondPhysician        SystemUser                    @relation("SecondCertifier", fields: [secondPhysicianId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([certifyingPhysicianId])
+  @@index([secondPhysicianId])
+  @@map("BRAIN_DEATH_CERTIFICATION")
+}
+
+model DonationLegalization {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  donorId              String                   @unique @map("donor_id") @db.Uuid
+  mechanism            LegalizationMechanism
+  officerInChargeId    String                   @map("officer_in_charge_id") @db.Uuid
+  rndCheckReference    String?                  @map("rnd_check_reference") @db.VarChar(200)
+  familyNotificationAt DateTime?                @map("family_notification_at") @db.Timestamptz(6)
+  status               String                   @db.VarChar(50)
+  donor                DonorRecord              @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  officerInCharge      SystemUser               @relation("LegalizationOfficer", fields: [officerInChargeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  representatives      DonationRepresentative[]
+
+  @@index([officerInChargeId])
+  @@map("DONATION_LEGALIZATION")
+}
+
+model DonationRepresentative {
+  id                  String               @id @default(uuid()) @db.Uuid
+  legalizationId      String               @map("legalization_id") @db.Uuid
+  fullName            String               @map("full_name") @db.VarChar(200)
+  documentType        String               @map("document_type") @db.VarChar(50)
+  documentNumber      String               @map("document_number") @db.VarChar(100)
+  relationshipToDonor String               @map("relationship_to_donor") @db.VarChar(100)
+  signatureStorageKey String?              @map("signature_storage_key") @db.VarChar(500)
+  signedAt            DateTime?            @map("signed_at") @db.Timestamptz(6)
+  legalization        DonationLegalization @relation(fields: [legalizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([legalizationId])
+  @@map("DONATION_REPRESENTATIVE")
+}
+
+model SourceDocument {
+  id               String              @id @default(uuid()) @db.Uuid
+  donorId          String              @map("donor_id") @db.Uuid
+  uploadedById     String              @map("uploaded_by") @db.Uuid
+  originalFilename String              @map("original_filename") @db.VarChar(255)
+  mimeType         String              @map("mime_type") @db.VarChar(100)
+  documentCategory String              @map("document_category") @db.VarChar(100)
+  objectStorageKey String              @map("object_storage_key") @db.VarChar(500)
+  sha256Hash       String              @map("sha256_hash") @db.Char(64)
+  status           String              @db.VarChar(50)
+  uploadedAt       DateTime            @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  donor            DonorRecord         @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  uploadedBy       SystemUser          @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  ocrJobs          OcrProcessingJob[]
+  ocrFields        OcrExtractedField[]
+
+  @@index([donorId, uploadedAt])
+  @@index([sha256Hash])
+  @@map("SOURCE_DOCUMENT")
+}
+
+model OcrProcessingJob {
+  id               String              @id @default(uuid()) @db.Uuid
+  sourceDocumentId String              @map("source_document_id") @db.Uuid
+  requestedById    String              @map("requested_by") @db.Uuid
+  providerName     String              @map("provider_name") @db.VarChar(100)
+  status           OcrJobStatus
+  attemptNumber    Int                 @default(1) @map("attempt_number")
+  correlationId    String              @map("correlation_id") @db.VarChar(100)
+  errorCode        String?             @map("error_code") @db.VarChar(100)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  sourceDocument   SourceDocument      @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requestedBy      SystemUser          @relation("OcrRequester", fields: [requestedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  extractedFields  OcrExtractedField[]
+
+  @@unique([sourceDocumentId, correlationId])
+  @@index([status, createdAt])
+  @@map("OCR_PROCESSING_JOB")
+}
+
+model OcrExtractedField {
+  id                String              @id @default(uuid()) @db.Uuid
+  ocrJobId          String              @map("ocr_job_id") @db.Uuid
+  sourceDocumentId  String              @map("source_document_id") @db.Uuid
+  donorId           String              @map("donor_id") @db.Uuid
+  canonicalFieldKey String              @map("canonical_field_key") @db.VarChar(150)
+  candidateValue    String              @map("candidate_value") @db.Text
+  confidenceScore   Decimal             @map("confidence_score") @db.Decimal(4, 3)
+  boundingBox       Json?               @map("bounding_box")
+  validationStatus  OcrValidationStatus @map("validation_status")
+  confirmedValue    String?             @map("confirmed_value") @db.Text
+  validatedById     String?             @map("validated_by") @db.Uuid
+  validatedAt       DateTime?           @map("validated_at") @db.Timestamptz(6)
+  ocrJob            OcrProcessingJob    @relation(fields: [ocrJobId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sourceDocument    SourceDocument      @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  donor             DonorRecord         @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  validatedBy       SystemUser?         @relation("OcrValidator", fields: [validatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([donorId, canonicalFieldKey])
+  @@index([validationStatus])
+  @@map("OCR_EXTRACTED_FIELD")
+}
+
+model OrganRecoverySurgery {
+  id                   String      @id @default(uuid()) @db.Uuid
+  donorId              String      @map("donor_id") @db.Uuid
+  leadSurgeonId        String      @map("lead_surgeon_id") @db.Uuid
+  procedureStartedAt   DateTime?   @map("procedure_started_at") @db.Timestamptz(6)
+  aorticClampAt        DateTime?   @map("aortic_clamp_at") @db.Timestamptz(6)
+  procedureEndedAt     DateTime?   @map("procedure_ended_at") @db.Timestamptz(6)
+  organsRecovered      Json?       @map("organs_recovered")
+  preservationSolution Json?       @map("preservation_solution")
+  surgicalTeam         Json?       @map("surgical_team")
+  donor                DonorRecord @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  leadSurgeon          SystemUser  @relation("LeadSurgeonSurgery", fields: [leadSurgeonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([donorId, procedureStartedAt])
+  @@map("ORGAN_RECOVERY_SURGERY")
+}
+
+model TissueRecoveryProcedure {
+  id                  String         @id @default(uuid()) @db.Uuid
+  donorId             String         @map("donor_id") @db.Uuid
+  technicianId        String         @map("technician_id") @db.Uuid
+  leadSurgeonId       String         @map("lead_surgeon_id") @db.Uuid
+  tissueCategory      TissueCategory @map("tissue_category")
+  checklistData       Json?          @map("checklist_data")
+  recoveredComponents Json?          @map("recovered_components")
+  forensicEvidence    Json?          @map("forensic_evidence")
+  donor               DonorRecord    @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  technician          SystemUser     @relation("TissueTechnician", fields: [technicianId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  leadSurgeon         SystemUser     @relation("TissueSurgeon", fields: [leadSurgeonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([donorId, tissueCategory])
+  @@map("TISSUE_RECOVERY_PROCEDURE")
+}
+
+model DocumentTemplate {
+  id           String            @id @default(uuid()) @db.Uuid
+  templateCode String            @unique @map("template_code") @db.VarChar(100)
+  versions     TemplateVersion[]
+
+  @@map("DOCUMENT_TEMPLATE")
+}
+
+model TemplateVersion {
+  id             String                 @id @default(uuid()) @db.Uuid
+  templateId     String                 @map("template_id") @db.Uuid
+  versionNumber  String                 @map("version_number") @db.VarChar(50)
+  effectiveFrom  DateTime               @map("effective_from") @db.Timestamptz(6)
+  status         String                 @db.VarChar(50)
+  jsonSchema     Json                   @map("json_schema")
+  mappingConfig  Json                   @map("mapping_config")
+  authorizedById String                 @map("authorized_by") @db.Uuid
+  template       DocumentTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  authorizedBy   SystemUser             @relation("TemplateAuthorizer", fields: [authorizedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  generatedPdfs  GeneratedPdfDocument[]
+
+  @@unique([templateId, versionNumber])
+  @@index([status, effectiveFrom])
+  @@map("TEMPLATE_VERSION")
+}
+
+model GeneratedPdfDocument {
+  id                   String          @id @default(uuid()) @db.Uuid
+  donorId              String          @map("donor_id") @db.Uuid
+  templateVersionId    String          @map("template_version_id") @db.Uuid
+  documentCode         String          @map("document_code") @db.VarChar(100)
+  objectStorageKey     String          @map("object_storage_key") @db.VarChar(500)
+  sha256Hash           String          @map("sha256_hash") @db.Char(64)
+  anonymizationApplied Boolean         @default(false) @map("anonymization_applied")
+  dataSnapshot         Json            @map("data_snapshot")
+  generatedById        String          @map("generated_by") @db.Uuid
+  approvedById         String?         @map("approved_by") @db.Uuid
+  donor                DonorRecord     @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  templateVersion      TemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  generatedBy          SystemUser      @relation("DocumentGenerator", fields: [generatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  approvedBy           SystemUser?     @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([donorId])
+  @@index([templateVersionId])
+  @@map("GENERATED_PDF_DOCUMENT")
+}
+
+model AuditEvent {
+  id            String     @id @default(uuid()) @db.Uuid
+  actorUserId   String     @map("actor_user_id") @db.Uuid
+  action        String     @db.VarChar(100)
+  entityType    String     @map("entity_type") @db.VarChar(100)
+  entityId      String     @map("entity_id") @db.Uuid
+  occurredAt    DateTime   @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  correlationId String     @map("correlation_id") @db.VarChar(100)
+  metadata      Json?
+  actor         SystemUser @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, occurredAt])
+  @@index([correlationId])
+  @@map("AUDIT_EVENT")
+}
