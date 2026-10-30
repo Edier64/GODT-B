@@ -83,8 +83,13 @@ model SystemUser {
   tissueAsTechnician    TissueRecoveryProcedure[] @relation("TissueTechnician")
   tissueAsSurgeon       TissueRecoveryProcedure[] @relation("TissueSurgeon")
   templateVersionsAuth  TemplateVersion[]         @relation("TemplateAuthorizer")
+  templateVersionsCreated TemplateVersion[]       @relation("TemplateVersionCreator")
   generatedDocuments    GeneratedPdfDocument[]    @relation("DocumentGenerator")
   approvedDocuments     GeneratedPdfDocument[]    @relation("DocumentApprover")
+  documentInstancesCreated DocumentInstance[]      @relation("DocumentInstanceCreator")
+  documentInstancesUpdated DocumentInstance[]      @relation("DocumentInstanceUpdater")
+  responseRevisionsCreated DocumentResponseRevision[] @relation("ResponseRevisionCreator")
+  provenanceValidated   DocumentFieldProvenance[] @relation("ProvenanceValidator")
   auditEvents           AuditEvent[]              @relation("AuditActor")
 
   @@map("SYSTEM_USER")
@@ -113,6 +118,7 @@ model DonorRecord {
   organSurgeries          OrganRecoverySurgery[]
   tissueProcedures        TissueRecoveryProcedure[]
   generatedDocuments      GeneratedPdfDocument[]
+  documentInstances       DocumentInstance[]
 
   @@index([status])
   @@index([documentNumber])
@@ -186,6 +192,7 @@ model SourceDocument {
   uploadedBy       SystemUser          @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   ocrJobs          OcrProcessingJob[]
   ocrFields        OcrExtractedField[]
+  fieldProvenance  DocumentFieldProvenance[]
 
   @@index([donorId, uploadedAt])
   @@index([sha256Hash])
@@ -229,6 +236,7 @@ model OcrExtractedField {
   sourceDocument    SourceDocument      @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   donor             DonorRecord         @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   validatedBy       SystemUser?         @relation("OcrValidator", fields: [validatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  fieldProvenance   DocumentFieldProvenance[]
 
   @@index([donorId, canonicalFieldKey])
   @@index([validationStatus])
@@ -272,7 +280,14 @@ model TissueRecoveryProcedure {
 model DocumentTemplate {
   id           String            @id @default(uuid()) @db.Uuid
   templateCode String            @unique @map("template_code") @db.VarChar(100)
+  name         String            @db.VarChar(200)
+  category     String            @db.VarChar(100)
+  status       String            @default("ACTIVE") @db.VarChar(50)
+  metadata     Json?
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   versions     TemplateVersion[]
+  instances    DocumentInstance[]
 
   @@map("DOCUMENT_TEMPLATE")
 }
@@ -284,11 +299,20 @@ model TemplateVersion {
   effectiveFrom  DateTime               @map("effective_from") @db.Timestamptz(6)
   status         String                 @db.VarChar(50)
   jsonSchema     Json                   @map("json_schema")
+  uiSchema       Json                   @map("ui_schema")
   mappingConfig  Json                   @map("mapping_config")
+  dependencyConfig Json?                @map("dependency_config")
+  generationConfig Json?                @map("generation_config")
+  definitionHash String?                @map("definition_hash") @db.Char(64)
   authorizedById String                 @map("authorized_by") @db.Uuid
+  createdById    String                 @map("created_by") @db.Uuid
+  publishedAt    DateTime?              @map("published_at") @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
   template       DocumentTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   authorizedBy   SystemUser             @relation("TemplateAuthorizer", fields: [authorizedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy      SystemUser             @relation("TemplateVersionCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   generatedPdfs  GeneratedPdfDocument[]
+  instances      DocumentInstance[]
 
   @@unique([templateId, versionNumber])
   @@index([status, effectiveFrom])
@@ -306,14 +330,87 @@ model GeneratedPdfDocument {
   dataSnapshot         Json            @map("data_snapshot")
   generatedById        String          @map("generated_by") @db.Uuid
   approvedById         String?         @map("approved_by") @db.Uuid
+  documentInstanceId  String?         @map("document_instance_id") @db.Uuid
   donor                DonorRecord     @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   templateVersion      TemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   generatedBy          SystemUser      @relation("DocumentGenerator", fields: [generatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   approvedBy           SystemUser?     @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documentInstance     DocumentInstance? @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([donorId])
   @@index([templateVersionId])
+  @@index([documentInstanceId])
   @@map("GENERATED_PDF_DOCUMENT")
+}
+
+model DocumentInstance {
+  id                String                     @id @default(uuid()) @db.Uuid
+  donorId           String                     @map("donor_id") @db.Uuid
+  templateId        String                     @map("template_id") @db.Uuid
+  templateVersionId String                     @map("template_version_id") @db.Uuid
+  documentCode      String                     @map("document_code") @db.VarChar(100)
+  status            String                     @default("DRAFT") @db.VarChar(50)
+  currentRevisionId String?                    @unique @map("current_revision_id") @db.Uuid
+  createdById       String                     @map("created_by") @db.Uuid
+  updatedById       String                     @map("updated_by") @db.Uuid
+  createdAt         DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt       DateTime?                  @map("completed_at") @db.Timestamptz(6)
+  approvedAt        DateTime?                  @map("approved_at") @db.Timestamptz(6)
+  donor             DonorRecord                @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  template          DocumentTemplate           @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  templateVersion   TemplateVersion            @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy         SystemUser                 @relation("DocumentInstanceCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy         SystemUser                 @relation("DocumentInstanceUpdater", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currentRevision   DocumentResponseRevision?  @relation("CurrentDocumentRevision", fields: [currentRevisionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  revisions         DocumentResponseRevision[] @relation("InstanceRevisions")
+  generatedPdfs     GeneratedPdfDocument[]
+
+  @@index([donorId, status, updatedAt])
+  @@index([templateVersionId, status])
+  @@map("DOCUMENT_INSTANCE")
+}
+
+model DocumentResponseRevision {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  documentInstanceId String                    @map("document_instance_id") @db.Uuid
+  revisionNumber     Int                       @map("revision_number")
+  responseData       Json                      @map("response_data")
+  validationSummary  Json?                     @map("validation_summary")
+  changeSummary      Json?                     @map("change_summary")
+  createdById        String                    @map("created_by") @db.Uuid
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  documentInstance   DocumentInstance           @relation("InstanceRevisions", fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currentOf          DocumentInstance?          @relation("CurrentDocumentRevision")
+  createdBy          SystemUser                @relation("ResponseRevisionCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  provenance         DocumentFieldProvenance[]
+
+  @@unique([documentInstanceId, revisionNumber])
+  @@index([documentInstanceId, createdAt])
+  @@map("DOCUMENT_RESPONSE_REVISION")
+}
+
+model DocumentFieldProvenance {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  responseRevisionId String                   @map("response_revision_id") @db.Uuid
+  fieldPath          String                   @map("field_path") @db.VarChar(300)
+  sourceKind         String                   @map("source_kind") @db.VarChar(50)
+  sourceEntityId     String?                  @map("source_entity_id") @db.Uuid
+  sourceDocumentId   String?                  @map("source_document_id") @db.Uuid
+  ocrFieldId         String?                  @map("ocr_field_id") @db.Uuid
+  validatedById      String?                  @map("validated_by") @db.Uuid
+  validatedAt        DateTime?                @map("validated_at") @db.Timestamptz(6)
+  conflictStatus     String                   @default("NONE") @map("conflict_status") @db.VarChar(50)
+  conflictDetails    Json?                    @map("conflict_details")
+  responseRevision   DocumentResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sourceDocument     SourceDocument?          @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  ocrField           OcrExtractedField?       @relation(fields: [ocrFieldId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  validatedBy        SystemUser?              @relation("ProvenanceValidator", fields: [validatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([responseRevisionId, fieldPath])
+  @@index([sourceDocumentId])
+  @@index([ocrFieldId])
+  @@map("DOCUMENT_FIELD_PROVENANCE")
 }
 
 model AuditEvent {

@@ -7,6 +7,7 @@ import { PrivacyModule } from "./application/privacy/privacy.module";
 import { LegalizationModule } from "./presentation/legalization/legalization.module";
 import { DocumentsModule } from "./presentation/documents/documents.module";
 import { OcrModule } from "./presentation/ocr/ocr.module";
+import { DocumentEngineModule } from "./presentation/document-engine/document-engine.module";
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { OcrModule } from "./presentation/ocr/ocr.module";
     LegalizationModule,
     DocumentsModule,
     OcrModule,
+    DocumentEngineModule,
   ],
 })
 export class AppModule {}

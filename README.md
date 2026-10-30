@@ -188,6 +188,8 @@ El estado y las decisiones de Sprint 1 están documentados en
 [`docs/sprint-1.md`](./docs/sprint-1.md).
 El flujo documental y OCR está documentado en
 [`docs/sprint-2.md`](./docs/sprint-2.md).
+La fundación del catálogo y las instancias documentales está documentada en
+[`docs/sprint-3.md`](./docs/sprint-3.md).
 Sprint 2 no se declara cerrado: Tesseract todavía no transforma su salida en
 candidatos canónicos y el OCR de PDF multipágina requiere un adaptador seguro
 de rasterización.
