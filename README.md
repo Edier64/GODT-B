@@ -3,7 +3,27 @@
 Base técnica del backend de GODT Regional 3. Este entregable cubre la
 infraestructura local, Sprint 1 y el flujo técnico de gestión documental/OCR
 de Sprint 2. No declara homologación clínica, jurídica o institucional.
+## Referencias documentales oficiales
 
+Los documentos de referencia del sistema GODT Regional 3
+se encuentran en:
+
+`docs/documentos-reales/`
+
+Estos archivos constituyen fuentes de análisis para el motor
+documental y las plantillas dinámicas.
+
+Antes de modificar definiciones, formularios o generación PDF,
+el agente debe consultar los documentos disponibles.
+
+No debe asumir que el catálogo es definitivo ni codificar
+una cantidad fija de documentos.
+
+Las plantillas publicadas y sus versiones deben administrarse
+mediante el motor documental del backend.
+
+Los archivos de referencia no sustituyen las versiones
+publicadas y homologadas dentro del sistema.
 ## Diagnóstico y alcance de Sprint 0
 
 El modelo relacional se documenta en

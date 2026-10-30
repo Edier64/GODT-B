@@ -33,3 +33,21 @@ lerna-debug.log*
 /docker/pgadmin/
 /backups/
 /storage/
+
+# Documentos clínicos y datos sensibles
+**/historias-clinicas-reales/
+**/documentos-diligenciados/
+**/datos-pacientes/
+**/documentos-reales/
+
+# Archivos temporales de procesamiento
+**/ocr-temp/
+**/pdf-temp/
+**/uploads/
+**/quarantine/
+
+# Variables y credenciales
+.env
+.env.*
+!.env.example
+!.env.docker.example
