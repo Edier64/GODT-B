@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaDocumentEngineRepository } from "../src/infrastructure/document-engine/prisma-document-engine.repository";
 
 const enabled = process.env.RUN_INTEGRATION_TESTS === "true";
 const describeIntegration = enabled ? describe : describe.skip;
@@ -79,7 +80,9 @@ describeIntegration("Document engine persistence", () => {
         effectiveFrom: new Date(),
         status: "PUBLISHED",
         jsonSchema: {
+          $schema: "https://json-schema.org/draft/2020-12/schema",
           type: "object",
+          additionalProperties: false,
           properties: { code: { type: "string" } },
           required: ["code"],
         },
@@ -143,5 +146,80 @@ describeIntegration("Document engine persistence", () => {
     expect(provenance.sourceKind).toBe("MANUAL");
     expect((donor.clinicalData as object | null) ?? null).toBeNull();
     expect(historical.responseData).toEqual({ code: "synthetic-2" });
+  });
+
+  it("validates the response against the instance template version", async () => {
+    const current = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      select: { currentRevisionId: true },
+    });
+    const invalid = await prisma.documentResponseRevision.update({
+      where: { id: current?.currentRevisionId ?? "" },
+      data: { responseData: { code: 123, unexpected: true } },
+    });
+    expect(invalid.responseData).toEqual({ code: 123, unexpected: true });
+
+    const repository = new PrismaDocumentEngineRepository(prisma as never);
+    const result = await repository.validateInstance(instanceId, {
+      userId,
+      isAdmin: true,
+      institutionalIps: [],
+    });
+    expect(result.valid).toBe(false);
+    expect((result as { errors: unknown[] }).errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ keyword: "type", path: "$.code" }),
+        expect.objectContaining({
+          keyword: "additionalProperties",
+          path: "$.unexpected",
+        }),
+      ]),
+    );
+    const stored = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: { currentRevision: true },
+    });
+    expect(stored?.status).toBe("DRAFT");
+    expect(stored?.currentRevision?.validationSummary).toMatchObject({
+      valid: false,
+    });
+  });
+
+  it("serializes concurrent revisions and preserves the complete history", async () => {
+    const repository = new PrismaDocumentEngineRepository(prisma as never);
+    const access = {
+      userId,
+      isAdmin: true,
+      institutionalIps: [],
+    };
+    await Promise.all([
+      repository.saveRevision({
+        instanceId,
+        actorUserId: userId,
+        access,
+        responseData: { code: "concurrent-a" },
+        sourceProvenance: [],
+        correlationId: `concurrent-a-${Date.now()}`,
+      }),
+      repository.saveRevision({
+        instanceId,
+        actorUserId: userId,
+        access,
+        responseData: { code: "concurrent-b" },
+        sourceProvenance: [],
+        correlationId: `concurrent-b-${Date.now()}`,
+      }),
+    ]);
+
+    const stored = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: { currentRevision: true, revisions: true },
+    });
+    const revisionNumbers = stored?.revisions
+      .map((revision) => revision.revisionNumber)
+      .sort((left, right) => left - right);
+    expect(revisionNumbers).toEqual([1, 2, 3, 4]);
+    expect(stored?.currentRevision?.documentInstanceId).toBe(instanceId);
+    expect([3, 4]).toContain(stored?.currentRevision?.revisionNumber);
   });
 });

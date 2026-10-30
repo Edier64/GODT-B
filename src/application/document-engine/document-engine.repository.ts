@@ -1,9 +1,14 @@
 import { Prisma } from "@prisma/client";
 
 export const DOCUMENT_ENGINE_REPOSITORY = Symbol("DOCUMENT_ENGINE_REPOSITORY");
+export interface DocumentAccessContext {
+  userId: string;
+  isAdmin: boolean;
+  institutionalIps: string[];
+}
 
 export interface DocumentEngineRepository {
-  listTemplates(): Promise<unknown[]>;
+  listTemplates(access: DocumentAccessContext): Promise<unknown[]>;
   createTemplate(input: {
     templateCode: string;
     name: string;
@@ -36,7 +41,10 @@ export interface DocumentEngineRepository {
     actorUserId: string;
     correlationId: string;
   }): Promise<unknown>;
-  listVersions(templateId: string): Promise<unknown[]>;
+  listVersions(
+    templateId: string,
+    access: DocumentAccessContext,
+  ): Promise<unknown[]>;
   findVersion(id: string): Promise<unknown | null>;
   validateVersion(
     id: string,
@@ -52,7 +60,7 @@ export interface DocumentEngineRepository {
     donorId: string;
     templateVersionId: string;
     actorUserId: string;
-    institutionalIps?: string[];
+    access: DocumentAccessContext;
     correlationId: string;
     responseData: Prisma.InputJsonValue;
     sourceProvenance: Array<{
@@ -63,22 +71,21 @@ export interface DocumentEngineRepository {
       ocrFieldId?: string;
       conflictStatus?: string;
       conflictDetails?: Prisma.InputJsonValue;
+      sourceValue?: Prisma.InputJsonValue;
     }>;
   }): Promise<unknown>;
   listInstances(
     donorId: string,
-    actorUserId: string,
-    institutionalIps?: string[],
+    access: DocumentAccessContext,
   ): Promise<unknown[]>;
   getInstance(
     id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
+    access: DocumentAccessContext,
   ): Promise<unknown | null>;
   saveRevision(input: {
     instanceId: string;
     actorUserId: string;
-    institutionalIps?: string[];
+    access: DocumentAccessContext;
     responseData: Prisma.InputJsonValue;
     sourceProvenance: Array<{
       fieldPath: string;
@@ -88,12 +95,17 @@ export interface DocumentEngineRepository {
       ocrFieldId?: string;
       conflictStatus?: string;
       conflictDetails?: Prisma.InputJsonValue;
+      sourceValue?: Prisma.InputJsonValue;
     }>;
     correlationId: string;
   }): Promise<unknown>;
-  validateInstance(
-    id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ): Promise<unknown>;
+  validateInstance(id: string, access: DocumentAccessContext): Promise<unknown>;
+  resolveConflict(input: {
+    instanceId: string;
+    fieldPath: string;
+    decision: string;
+    justification: string;
+    access: DocumentAccessContext;
+    correlationId: string;
+  }): Promise<unknown>;
 }

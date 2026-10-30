@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { DocumentEngineService } from "../../application/document-engine/document-engine.service";
 import {
+  DocumentConflictError,
   DocumentEngineAccessDeniedError,
   DocumentEngineNotFoundError,
   DocumentEngineValidationError,
@@ -26,8 +27,10 @@ import {
   CreateTemplateDto,
   CreateVersionDto,
   SaveRevisionDto,
+  ResolveConflictDto,
   UpdateTemplateDto,
 } from "./document-engine.dto";
+import { DocumentAccessContext } from "../../application/document-engine/document-engine.repository";
 
 @ApiTags("document-engine")
 @ApiBearerAuth()
@@ -38,8 +41,8 @@ export class DocumentEngineController {
 
   @Get("document-catalog")
   @ApiOperation({ summary: "Consultar catálogo documental" })
-  listTemplates() {
-    return this.engine.listTemplates();
+  listTemplates(@CurrentUser() user: AuthenticatedUser) {
+    return this.run(() => this.engine.listTemplates(this.access(user)));
   }
 
   @Post("document-catalog")
@@ -84,8 +87,13 @@ export class DocumentEngineController {
   }
 
   @Get("document-catalog/:id/versions")
-  listVersions(@Param("id") templateId: string) {
-    return this.engine.listVersions(templateId);
+  listVersions(
+    @Param("id") templateId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.run(() =>
+      this.engine.listVersions(templateId, this.access(user)),
+    );
   }
 
   @Post("document-catalog/:id/versions/:versionId/validate")
@@ -119,8 +127,7 @@ export class DocumentEngineController {
         ...dto,
         donorId,
         actorUserId: user.userId,
-        institutionalIps:
-          user.role === "ADMIN" ? undefined : user.institutionalIps,
+        access: this.access(user),
       }),
     );
   }
@@ -131,23 +138,13 @@ export class DocumentEngineController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.run(() =>
-      this.engine.listInstances(
-        donorId,
-        user.userId,
-        user.role === "ADMIN" ? undefined : user.institutionalIps,
-      ),
+      this.engine.listInstances(donorId, this.access(user)),
     );
   }
 
   @Get("document-instances/:id")
   getInstance(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.run(() =>
-      this.engine.getInstance(
-        id,
-        user.userId,
-        user.role === "ADMIN" ? undefined : user.institutionalIps,
-      ),
-    );
+    return this.run(() => this.engine.getInstance(id, this.access(user)));
   }
 
   @Patch("document-instances/:id")
@@ -160,9 +157,7 @@ export class DocumentEngineController {
       this.engine.saveRevision({
         ...dto,
         instanceId,
-        actorUserId: user.userId,
-        institutionalIps:
-          user.role === "ADMIN" ? undefined : user.institutionalIps,
+        access: this.access(user),
       }),
     );
   }
@@ -172,13 +167,30 @@ export class DocumentEngineController {
     @Param("id") id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    return this.run(() => this.engine.validateInstance(id, this.access(user)));
+  }
+
+  @Post("document-instances/:id/conflicts/resolve")
+  resolveConflict(
+    @Param("id") instanceId: string,
+    @Body() dto: ResolveConflictDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.run(() =>
-      this.engine.validateInstance(
-        id,
-        user.userId,
-        user.role === "ADMIN" ? undefined : user.institutionalIps,
-      ),
+      this.engine.resolveConflict({
+        ...dto,
+        instanceId,
+        access: this.access(user),
+      }),
     );
+  }
+
+  private access(user: AuthenticatedUser): DocumentAccessContext {
+    return {
+      userId: user.userId,
+      isAdmin: user.role === "ADMIN",
+      institutionalIps: user.institutionalIps ?? [],
+    };
   }
 
   private async run<T>(operation: () => Promise<T> | T): Promise<T> {
@@ -193,6 +205,9 @@ export class DocumentEngineController {
       }
       if (error instanceof DocumentEngineValidationError) {
         throw new HttpException(error.message, HttpStatus.UNPROCESSABLE_ENTITY);
+      }
+      if (error instanceof DocumentConflictError) {
+        throw new HttpException(error.message, HttpStatus.CONFLICT);
       }
       throw error;
     }

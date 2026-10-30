@@ -5,7 +5,57 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  ValidateNested,
 } from "class-validator";
+import { Type } from "class-transformer";
+
+export class MappingConfigDto {
+  @IsString()
+  targetKey!: string;
+
+  @IsString()
+  sourcePath!: string;
+
+  @IsString()
+  sourceKind!: string;
+
+  @IsString()
+  dataType!: string;
+
+  @IsOptional()
+  writable?: boolean;
+}
+
+export class SourceProvenanceDto {
+  @IsString()
+  fieldPath!: string;
+
+  @IsString()
+  sourceKind!: string;
+
+  @IsOptional()
+  @IsUUID()
+  sourceEntityId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  sourceDocumentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  ocrFieldId?: string;
+
+  @IsOptional()
+  @IsString()
+  conflictStatus?: string;
+
+  @IsOptional()
+  @IsObject()
+  conflictDetails?: Record<string, unknown>;
+
+  @IsOptional()
+  sourceValue?: unknown;
+}
 
 export class CreateTemplateDto {
   @IsString()
@@ -54,7 +104,9 @@ export class CreateVersionDto {
   uiSchema!: Record<string, unknown>;
 
   @IsArray()
-  mappingConfig!: unknown[];
+  @ValidateNested({ each: true })
+  @Type(() => MappingConfigDto)
+  mappingConfig!: MappingConfigDto[];
 
   @IsOptional()
   dependencyConfig?: unknown;
@@ -73,7 +125,9 @@ export class CreateInstanceDto {
 
   @IsOptional()
   @IsArray()
-  sourceProvenance?: Array<Record<string, unknown>>;
+  @ValidateNested({ each: true })
+  @Type(() => SourceProvenanceDto)
+  sourceProvenance?: SourceProvenanceDto[];
 }
 
 export class SaveRevisionDto {
@@ -82,5 +136,18 @@ export class SaveRevisionDto {
 
   @IsOptional()
   @IsArray()
-  sourceProvenance?: Array<Record<string, unknown>>;
+  @ValidateNested({ each: true })
+  @Type(() => SourceProvenanceDto)
+  sourceProvenance?: SourceProvenanceDto[];
+}
+
+export class ResolveConflictDto {
+  @IsString()
+  fieldPath!: string;
+
+  @IsString()
+  decision!: string;
+
+  @IsString()
+  justification!: string;
 }

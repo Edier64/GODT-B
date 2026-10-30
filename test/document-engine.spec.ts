@@ -15,9 +15,11 @@ describe("DocumentDefinitionValidator", () => {
         validUi,
         [
           {
-            targetKey: "code",
-            sourcePath: "rndCode",
+            targetKey: "rndCode",
+            sourcePath: "donorRecord.rndCode",
             sourceKind: "DONOR_RECORD",
+            dataType: "string",
+            writable: false,
           },
         ],
         { all: [{ field: "procedure.kind", equals: "TISSUE_RECOVERY" }] },

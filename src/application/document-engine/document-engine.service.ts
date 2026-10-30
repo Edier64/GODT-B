@@ -7,9 +7,21 @@ import {
 } from "./document-engine.errors";
 import {
   DOCUMENT_ENGINE_REPOSITORY,
+  DocumentAccessContext,
   DocumentEngineRepository,
 } from "./document-engine.repository";
 import { DocumentDefinitionValidator } from "./document-definition.validator";
+
+type ProvenanceInput = {
+  fieldPath: string;
+  sourceKind: string;
+  sourceEntityId?: string;
+  sourceDocumentId?: string;
+  ocrFieldId?: string;
+  conflictStatus?: string;
+  conflictDetails?: Record<string, unknown>;
+  sourceValue?: unknown;
+};
 
 @Injectable()
 export class DocumentEngineService {
@@ -19,8 +31,8 @@ export class DocumentEngineService {
     private readonly validator: DocumentDefinitionValidator,
   ) {}
 
-  listTemplates() {
-    return this.repository.listTemplates();
+  listTemplates(access: DocumentAccessContext) {
+    return this.repository.listTemplates(access);
   }
 
   createTemplate(input: {
@@ -96,8 +108,8 @@ export class DocumentEngineService {
     });
   }
 
-  listVersions(templateId: string) {
-    return this.repository.listVersions(templateId);
+  listVersions(templateId: string, access: DocumentAccessContext) {
+    return this.repository.listVersions(templateId, access);
   }
 
   async validateVersion(id: string, actorUserId: string) {
@@ -130,9 +142,9 @@ export class DocumentEngineService {
     donorId: string;
     templateVersionId: string;
     actorUserId: string;
-    institutionalIps?: string[];
+    access: DocumentAccessContext;
     responseData: Record<string, unknown>;
-    sourceProvenance?: Array<Record<string, unknown>>;
+    sourceProvenance?: ProvenanceInput[];
   }) {
     if (
       input.sourceProvenance?.some((source) => {
@@ -155,28 +167,12 @@ export class DocumentEngineService {
     });
   }
 
-  listInstances(
-    donorId: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
-    return this.repository.listInstances(
-      donorId,
-      actorUserId,
-      institutionalIps,
-    );
+  listInstances(donorId: string, access: DocumentAccessContext) {
+    return this.repository.listInstances(donorId, access);
   }
 
-  async getInstance(
-    id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
-    const result = await this.repository.getInstance(
-      id,
-      actorUserId,
-      institutionalIps,
-    );
+  async getInstance(id: string, access: DocumentAccessContext) {
+    const result = await this.repository.getInstance(id, access);
     if (!result)
       throw new DocumentEngineAccessDeniedError("Instance not found");
     return result;
@@ -184,30 +180,37 @@ export class DocumentEngineService {
 
   saveRevision(input: {
     instanceId: string;
-    actorUserId: string;
-    institutionalIps?: string[];
+    access: DocumentAccessContext;
     responseData: Record<string, unknown>;
-    sourceProvenance?: Array<Record<string, unknown>>;
+    sourceProvenance?: ProvenanceInput[];
   }) {
     return this.repository.saveRevision({
       ...input,
+      actorUserId: input.access.userId,
       responseData: input.responseData as Prisma.InputJsonValue,
       sourceProvenance: this.mapProvenance(input.sourceProvenance),
       correlationId: randomUUID(),
     });
   }
 
-  validateInstance(
-    id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
-    return this.repository.validateInstance(id, actorUserId, institutionalIps);
+  validateInstance(id: string, access: DocumentAccessContext) {
+    return this.repository.validateInstance(id, access);
   }
 
-  private mapProvenance(
-    values: Array<Record<string, unknown>> | undefined,
-  ): Array<{
+  resolveConflict(input: {
+    instanceId: string;
+    fieldPath: string;
+    decision: string;
+    justification: string;
+    access: DocumentAccessContext;
+  }) {
+    return this.repository.resolveConflict({
+      ...input,
+      correlationId: randomUUID(),
+    });
+  }
+
+  private mapProvenance(values: ProvenanceInput[] | undefined): Array<{
     fieldPath: string;
     sourceKind: string;
     sourceEntityId?: string;
@@ -215,16 +218,9 @@ export class DocumentEngineService {
     ocrFieldId?: string;
     conflictStatus?: string;
     conflictDetails?: Prisma.InputJsonValue;
+    sourceValue?: Prisma.InputJsonValue;
   }> {
     return (values ?? []).map((value) => {
-      if (
-        typeof value.fieldPath !== "string" ||
-        typeof value.sourceKind !== "string"
-      ) {
-        throw new DocumentEngineValidationError(
-          "Each provenance entry requires fieldPath and sourceKind",
-        );
-      }
       return {
         fieldPath: value.fieldPath,
         sourceKind: value.sourceKind,
@@ -234,6 +230,7 @@ export class DocumentEngineService {
         conflictStatus: this.optionalString(value.conflictStatus),
         conflictDetails: value.conflictDetails as
           Prisma.InputJsonValue | undefined,
+        sourceValue: value.sourceValue as Prisma.InputJsonValue | undefined,
       };
     });
   }

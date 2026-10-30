@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { DocumentEngineValidationError } from "./document-engine.errors";
+import { CANONICAL_MAPPING_CATALOG } from "./canonical-mapping-catalog";
 
 const SOURCE_KINDS = new Set([
   "MANUAL",
@@ -29,7 +30,9 @@ export class DocumentDefinitionValidator {
     this.validateSchema(jsonSchema);
     this.validateUiSchema(uiSchema);
     this.validateMappings(mappingConfig);
-    if (dependencyConfig !== undefined) this.validateRules(dependencyConfig);
+    if (dependencyConfig !== undefined && dependencyConfig !== null) {
+      this.validateRules(dependencyConfig);
+    }
   }
 
   private validateSchema(value: unknown): void {
@@ -123,19 +126,29 @@ export class DocumentDefinitionValidator {
       if (
         !this.isRecord(mapping) ||
         typeof mapping.targetKey !== "string" ||
-        typeof mapping.sourcePath !== "string"
+        typeof mapping.sourcePath !== "string" ||
+        typeof mapping.sourceKind !== "string" ||
+        typeof mapping.dataType !== "string"
       ) {
         throw new DocumentEngineValidationError(
           "Each mapping requires targetKey and sourcePath",
         );
       }
+      const definition = CANONICAL_MAPPING_CATALOG[mapping.targetKey];
+      if (!definition) {
+        throw new DocumentEngineValidationError(
+          "Mapping targetKey is not in the canonical catalog",
+        );
+      }
       if (
-        mapping.sourceKind !== undefined &&
-        (typeof mapping.sourceKind !== "string" ||
-          !SOURCE_KINDS.has(mapping.sourceKind))
+        !SOURCE_KINDS.has(mapping.sourceKind) ||
+        mapping.sourcePath !== definition.sourcePath ||
+        mapping.sourceKind !== definition.sourceKind ||
+        mapping.dataType !== definition.dataType ||
+        mapping.writable !== false
       ) {
         throw new DocumentEngineValidationError(
-          "Mapping sourceKind is not supported",
+          "Mapping is incompatible with the canonical catalog",
         );
       }
     }

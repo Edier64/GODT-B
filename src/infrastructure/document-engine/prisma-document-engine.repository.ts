@@ -3,10 +3,15 @@ import { Prisma, OcrValidationStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   DocumentEngineAccessDeniedError,
+  DocumentConflictError,
   DocumentEngineNotFoundError,
   DocumentEngineValidationError,
 } from "../../application/document-engine/document-engine.errors";
-import { DocumentEngineRepository } from "../../application/document-engine/document-engine.repository";
+import {
+  DocumentAccessContext,
+  DocumentEngineRepository,
+} from "../../application/document-engine/document-engine.repository";
+import { DocumentResponseValidator } from "../../application/document-engine/document-response.validator";
 
 const SAFE_SOURCE_KINDS = new Set([
   "MANUAL",
@@ -19,11 +24,20 @@ const SAFE_SOURCE_KINDS = new Set([
 
 @Injectable()
 export class PrismaDocumentEngineRepository implements DocumentEngineRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly responseValidator: DocumentResponseValidator = new DocumentResponseValidator(),
+  ) {}
 
-  listTemplates() {
+  listTemplates(access: DocumentAccessContext) {
+    this.assertInstitutionalAccess(access);
     return this.prisma.documentTemplate.findMany({
-      include: { versions: { orderBy: { createdAt: "desc" } } },
+      include: {
+        versions: {
+          where: access.isAdmin ? undefined : { status: "PUBLISHED" },
+          orderBy: { createdAt: "desc" },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -111,9 +125,13 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     });
   }
 
-  listVersions(templateId: string) {
+  listVersions(templateId: string, access: DocumentAccessContext) {
+    this.assertInstitutionalAccess(access);
     return this.prisma.templateVersion.findMany({
-      where: { templateId },
+      where: {
+        templateId,
+        ...(access.isAdmin ? {} : { status: "PUBLISHED" }),
+      },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -127,28 +145,32 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     actorUserId: string,
     correlationId: string,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      const version = await tx.templateVersion.findUnique({ where: { id } });
-      if (!version) throw new DocumentEngineNotFoundError("Version not found");
-      if (version.status === "PUBLISHED") return version;
-      if (version.status !== "DRAFT") {
-        throw new DocumentEngineValidationError(
-          "Only draft versions can be validated",
+    return this.prisma.$transaction(
+      async (tx) => {
+        const version = await tx.templateVersion.findUnique({ where: { id } });
+        if (!version)
+          throw new DocumentEngineNotFoundError("Version not found");
+        if (version.status === "PUBLISHED") return version;
+        if (version.status !== "DRAFT") {
+          throw new DocumentEngineValidationError(
+            "Only draft versions can be validated",
+          );
+        }
+        const result = await tx.templateVersion.update({
+          where: { id },
+          data: { status: "VALIDATED" },
+        });
+        await this.audit(
+          tx,
+          actorUserId,
+          "TEMPLATE_VERSION_VALIDATED",
+          id,
+          correlationId,
         );
-      }
-      const result = await tx.templateVersion.update({
-        where: { id },
-        data: { status: "VALIDATED" },
-      });
-      await this.audit(
-        tx,
-        actorUserId,
-        "TEMPLATE_VERSION_VALIDATED",
-        id,
-        correlationId,
-      );
-      return result;
-    });
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async publishVersion(id: string, actorUserId: string, correlationId: string) {
@@ -188,7 +210,7 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
         where: { id: input.donorId },
         select: { originatingIpsName: true },
       });
-      this.assertScope(donor?.originatingIpsName, input.institutionalIps);
+      this.assertScope(donor?.originatingIpsName, input.access);
       const version = await tx.templateVersion.findUnique({
         where: { id: input.templateVersionId },
         include: { template: true },
@@ -237,12 +259,8 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     });
   }
 
-  async listInstances(
-    donorId: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
-    await this.assertDonorAccess(donorId, institutionalIps);
+  async listInstances(donorId: string, access: DocumentAccessContext) {
+    await this.assertDonorAccess(donorId, access);
     return this.prisma.documentInstance.findMany({
       where: { donorId },
       include: { currentRevision: true, templateVersion: true },
@@ -250,11 +268,7 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     });
   }
 
-  async getInstance(
-    id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
+  async getInstance(id: string, access: DocumentAccessContext) {
     const instance = await this.prisma.documentInstance.findUnique({
       where: { id },
       include: {
@@ -267,69 +281,95 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
       },
     });
     if (!instance) return null;
-    await this.assertDonorAccess(instance.donorId, institutionalIps);
+    await this.assertDonorAccess(instance.donorId, access);
     return instance;
   }
 
   async saveRevision(
     input: Parameters<DocumentEngineRepository["saveRevision"]>[0],
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      const instance = await tx.documentInstance.findUnique({
-        where: { id: input.instanceId },
-      });
-      if (!instance)
-        throw new DocumentEngineNotFoundError("Instance not found");
-      await this.assertDonorAccess(
-        input.instanceId,
-        input.institutionalIps,
-        tx,
-        true,
-      );
-      await this.validateProvenance(
-        tx,
-        instance.donorId,
-        input.sourceProvenance,
-      );
-      const latest = await tx.documentResponseRevision.findFirst({
-        where: { documentInstanceId: instance.id },
-        orderBy: { revisionNumber: "desc" },
-        select: { revisionNumber: true },
-      });
-      const revision = await tx.documentResponseRevision.create({
-        data: {
-          documentInstanceId: instance.id,
-          revisionNumber: (latest?.revisionNumber ?? 0) + 1,
-          responseData: input.responseData,
-          validationSummary: { valid: false, incomplete: true },
-          createdById: input.actorUserId,
-        },
-      });
-      await this.createProvenance(tx, revision.id, input.sourceProvenance);
-      const result = await tx.documentInstance.update({
-        where: { id: instance.id },
-        data: {
-          currentRevisionId: revision.id,
-          updatedById: input.actorUserId,
-        },
-        include: { currentRevision: { include: { provenance: true } } },
-      });
-      await this.audit(
-        tx,
-        input.actorUserId,
-        "DOCUMENT_REVISION_CREATED",
-        instance.id,
-        input.correlationId,
-      );
-      return result;
-    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx) => {
+            const instance = await tx.documentInstance.findUnique({
+              where: { id: input.instanceId },
+            });
+            if (!instance)
+              throw new DocumentEngineNotFoundError("Instance not found");
+            await this.assertDonorAccess(instance.donorId, input.access, tx);
+            await this.validateProvenance(
+              tx,
+              instance.donorId,
+              input.sourceProvenance,
+            );
+            const pending = await tx.documentFieldProvenance.findFirst({
+              where: {
+                responseRevision: {
+                  documentInstanceId: instance.id,
+                  id: instance.currentRevisionId ?? undefined,
+                },
+                conflictStatus: "PENDING",
+              },
+            });
+            if (pending) {
+              throw new DocumentConflictError(
+                "Pending field conflicts must be resolved before saving a new revision",
+              );
+            }
+            const latest = await tx.documentResponseRevision.findFirst({
+              where: { documentInstanceId: instance.id },
+              orderBy: { revisionNumber: "desc" },
+              select: { revisionNumber: true },
+            });
+            const revision = await tx.documentResponseRevision.create({
+              data: {
+                documentInstanceId: instance.id,
+                revisionNumber: (latest?.revisionNumber ?? 0) + 1,
+                responseData: input.responseData,
+                validationSummary: { valid: false, incomplete: true },
+                createdById: input.actorUserId,
+              },
+            });
+            await this.createProvenance(
+              tx,
+              revision.id,
+              input.sourceProvenance,
+            );
+            const result = await tx.documentInstance.update({
+              where: { id: instance.id },
+              data: {
+                currentRevisionId: revision.id,
+                updatedById: input.actorUserId,
+              },
+              include: { currentRevision: { include: { provenance: true } } },
+            });
+            await this.audit(
+              tx,
+              input.actorUserId,
+              "DOCUMENT_REVISION_CREATED",
+              instance.id,
+              input.correlationId,
+            );
+            return result;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2034" &&
+          attempt < 2
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error("Serializable transaction retry limit exceeded");
   }
 
-  async validateInstance(
-    id: string,
-    actorUserId: string,
-    institutionalIps?: string[],
-  ) {
+  async validateInstance(id: string, access: DocumentAccessContext) {
     return this.prisma.$transaction(async (tx) => {
       const instance = await tx.documentInstance.findUnique({
         where: { id },
@@ -337,35 +377,105 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
       });
       if (!instance?.currentRevision)
         throw new DocumentEngineNotFoundError("Instance or revision not found");
-      await this.assertDonorAccess(instance.donorId, institutionalIps, tx);
+      await this.assertDonorAccess(instance.donorId, access, tx);
       const schema = await tx.templateVersion.findUnique({
         where: { id: instance.templateVersionId },
         select: { jsonSchema: true },
       });
-      const missing = this.requiredFields(
-        schema?.jsonSchema,
+      if (!schema) {
+        throw new DocumentEngineNotFoundError("Template version not found");
+      }
+      const validation = this.responseValidator.validate(
+        schema.jsonSchema,
         instance.currentRevision.responseData,
       );
-      const summary = { valid: missing.length === 0, missingFields: missing };
+      const missingFields = validation.errors
+        .filter((error) => error.keyword === "required")
+        .map((error) => error.path);
+      const summary = {
+        valid: validation.valid,
+        missingFields,
+        errors: validation.errors,
+      };
       const revision = await tx.documentResponseRevision.update({
         where: { id: instance.currentRevision.id },
-        data: { validationSummary: summary },
+        data: {
+          validationSummary: summary as unknown as Prisma.InputJsonValue,
+        },
       });
-      if (missing.length > 0)
-        return { ...revision, valid: false, missingFields: missing };
+      if (!validation.valid)
+        return {
+          ...revision,
+          valid: false,
+          missingFields,
+          errors: validation.errors,
+        };
       const result = await tx.documentInstance.update({
         where: { id },
-        data: { status: "IN_REVIEW", updatedById: actorUserId },
+        data: { status: "IN_REVIEW", updatedById: access.userId },
       });
       await this.audit(
         tx,
-        actorUserId,
+        access.userId,
         "DOCUMENT_INSTANCE_VALIDATED",
         id,
         randomCorrelation(),
       );
       return { ...result, valid: true, missingFields: [] };
     });
+  }
+
+  async resolveConflict(
+    input: Parameters<DocumentEngineRepository["resolveConflict"]>[0],
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const instance = await tx.documentInstance.findUnique({
+          where: { id: input.instanceId },
+          select: { donorId: true, currentRevisionId: true },
+        });
+        if (!instance?.currentRevisionId) {
+          throw new DocumentEngineNotFoundError(
+            "Instance or revision not found",
+          );
+        }
+        await this.assertDonorAccess(instance.donorId, input.access, tx);
+        if (!input.justification.trim()) {
+          throw new DocumentEngineValidationError(
+            "Conflict justification is required",
+          );
+        }
+        const provenance = await tx.documentFieldProvenance.findFirst({
+          where: {
+            responseRevisionId: instance.currentRevisionId,
+            fieldPath: input.fieldPath,
+            conflictStatus: "PENDING",
+          },
+        });
+        if (!provenance) {
+          throw new DocumentConflictError("Pending conflict was not found");
+        }
+        const result = await tx.documentFieldProvenance.update({
+          where: { id: provenance.id },
+          data: {
+            conflictStatus: "RESOLVED",
+            conflictResolvedById: input.access.userId,
+            conflictResolvedAt: new Date(),
+            conflictDecision: input.decision,
+            conflictJustification: input.justification,
+          },
+        });
+        await this.audit(
+          tx,
+          input.access.userId,
+          "DOCUMENT_CONFLICT_RESOLVED",
+          input.instanceId,
+          input.correlationId,
+        );
+        return result;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   private async validateProvenance(
@@ -435,80 +545,74 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     >[0]["sourceProvenance"],
   ) {
     if (!values.length) return Promise.resolve([]);
+    const fieldValues = new Map<string, Set<string>>();
+    for (const value of values) {
+      if (value.sourceValue === undefined) continue;
+      const serialized = JSON.stringify(value.sourceValue);
+      const current = fieldValues.get(value.fieldPath) ?? new Set<string>();
+      current.add(serialized);
+      fieldValues.set(value.fieldPath, current);
+    }
+    const conflictingFields = new Set(
+      [...fieldValues.entries()]
+        .filter(([, sourceValues]) => sourceValues.size > 1)
+        .map(([fieldPath]) => fieldPath),
+    );
     return Promise.all(
       values.map((value) =>
-        tx.documentFieldProvenance.create({
-          data: {
-            responseRevisionId: revisionId,
-            fieldPath: value.fieldPath,
-            sourceKind: value.sourceKind,
-            sourceEntityId: value.sourceEntityId,
-            sourceDocumentId: value.sourceDocumentId,
-            ocrFieldId: value.ocrFieldId,
-            conflictStatus: value.conflictStatus ?? "NONE",
-            conflictDetails: value.conflictDetails,
-          },
-        }),
+        (async () => {
+          const ocrField = value.ocrFieldId
+            ? await tx.ocrExtractedField.findUnique({
+                where: { id: value.ocrFieldId },
+                select: { validatedById: true, validatedAt: true },
+              })
+            : null;
+          return tx.documentFieldProvenance.create({
+            data: {
+              responseRevisionId: revisionId,
+              fieldPath: value.fieldPath,
+              sourceKind: value.sourceKind,
+              sourceEntityId: value.sourceEntityId,
+              sourceDocumentId: value.sourceDocumentId,
+              ocrFieldId: value.ocrFieldId,
+              sourceValue: value.sourceValue,
+              validatedById: ocrField?.validatedById,
+              validatedAt: ocrField?.validatedAt,
+              conflictStatus: conflictingFields.has(value.fieldPath)
+                ? "PENDING"
+                : (value.conflictStatus ?? "NONE"),
+              conflictDetails: value.conflictDetails,
+            },
+          });
+        })(),
       ),
-    );
-  }
-
-  private requiredFields(
-    schema: Prisma.JsonValue | undefined,
-    data: Prisma.JsonValue,
-  ): string[] {
-    if (
-      !schema ||
-      typeof schema !== "object" ||
-      Array.isArray(schema) ||
-      !data ||
-      typeof data !== "object" ||
-      Array.isArray(data)
-    )
-      return [];
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    return required.filter(
-      (key): key is string =>
-        typeof key === "string" &&
-        (!(key in data) || data[key] === null || data[key] === ""),
     );
   }
 
   private async assertDonorAccess(
     donorId: string,
-    institutionalIps?: string[],
+    access: DocumentAccessContext,
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
-    instanceId = false,
   ) {
-    const donor = await (instanceId
-      ? (tx as Prisma.TransactionClient).donorRecord.findUnique({
-          where: {
-            id: (
-              await (
-                tx as Prisma.TransactionClient
-              ).documentInstance.findUnique({
-                where: { id: donorId },
-                select: { donorId: true },
-              })
-            )?.donorId,
-          },
-          select: { originatingIpsName: true },
-        })
-      : (tx as Prisma.TransactionClient | PrismaService).donorRecord.findUnique(
-          {
-            where: { id: donorId },
-            select: { originatingIpsName: true },
-          },
-        ));
-    this.assertScope(donor?.originatingIpsName, institutionalIps);
+    const donor = await tx.donorRecord.findUnique({
+      where: { id: donorId },
+      select: { originatingIpsName: true },
+    });
+    this.assertScope(donor?.originatingIpsName, access);
+  }
+
+  private assertInstitutionalAccess(access: DocumentAccessContext) {
+    if (!access.isAdmin && access.institutionalIps.length === 0) {
+      throw new DocumentEngineAccessDeniedError("Institutional scope denied");
+    }
   }
 
   private assertScope(
     ipsName: string | undefined,
-    institutionalIps?: string[],
+    access: DocumentAccessContext,
   ) {
     if (!ipsName) throw new DocumentEngineNotFoundError("Donor not found");
-    if (institutionalIps && !institutionalIps.includes(ipsName)) {
+    if (!access.isAdmin && !access.institutionalIps.includes(ipsName)) {
       throw new DocumentEngineAccessDeniedError("Institutional scope denied");
     }
   }

@@ -90,6 +90,7 @@ model SystemUser {
   documentInstancesUpdated DocumentInstance[]      @relation("DocumentInstanceUpdater")
   responseRevisionsCreated DocumentResponseRevision[] @relation("ResponseRevisionCreator")
   provenanceValidated   DocumentFieldProvenance[] @relation("ProvenanceValidator")
+  conflictsResolved     DocumentFieldProvenance[] @relation("ConflictResolver")
   auditEvents           AuditEvent[]              @relation("AuditActor")
 
   @@map("SYSTEM_USER")
@@ -362,12 +363,13 @@ model DocumentInstance {
   templateVersion   TemplateVersion            @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   createdBy         SystemUser                 @relation("DocumentInstanceCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   updatedBy         SystemUser                 @relation("DocumentInstanceUpdater", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  currentRevision   DocumentResponseRevision?  @relation("CurrentDocumentRevision", fields: [currentRevisionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currentRevision   DocumentResponseRevision?  @relation("CurrentDocumentRevision", fields: [currentRevisionId, id], references: [id, documentInstanceId], onDelete: Restrict, onUpdate: Cascade)
   revisions         DocumentResponseRevision[] @relation("InstanceRevisions")
   generatedPdfs     GeneratedPdfDocument[]
 
   @@index([donorId, status, updatedAt])
   @@index([templateVersionId, status])
+  @@unique([currentRevisionId, id])
   @@map("DOCUMENT_INSTANCE")
 }
 
@@ -386,6 +388,7 @@ model DocumentResponseRevision {
   provenance         DocumentFieldProvenance[]
 
   @@unique([documentInstanceId, revisionNumber])
+  @@unique([id, documentInstanceId])
   @@index([documentInstanceId, createdAt])
   @@map("DOCUMENT_RESPONSE_REVISION")
 }
@@ -402,10 +405,16 @@ model DocumentFieldProvenance {
   validatedAt        DateTime?                @map("validated_at") @db.Timestamptz(6)
   conflictStatus     String                   @default("NONE") @map("conflict_status") @db.VarChar(50)
   conflictDetails    Json?                    @map("conflict_details")
+  sourceValue        Json?                   @map("source_value")
+  conflictResolvedById String?              @map("conflict_resolved_by") @db.Uuid
+  conflictResolvedAt DateTime?              @map("conflict_resolved_at") @db.Timestamptz(6)
+  conflictDecision   String?                @map("conflict_decision") @db.VarChar(100)
+  conflictJustification String?             @map("conflict_justification") @db.Text
   responseRevision   DocumentResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   sourceDocument     SourceDocument?          @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   ocrField           OcrExtractedField?       @relation(fields: [ocrFieldId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   validatedBy        SystemUser?              @relation("ProvenanceValidator", fields: [validatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  conflictResolvedBy  SystemUser?             @relation("ConflictResolver", fields: [conflictResolvedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([responseRevisionId, fieldPath])
   @@index([sourceDocumentId])
