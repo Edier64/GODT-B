@@ -1,0 +1,357 @@
+{
+  "info": {
+    "_postman_id": "godt-regional-3-api",
+    "name": "GODT Regional 3 API",
+    "description": "Colección para probar la API REST de GODT. Selecciona el entorno GODT - Local y configura jwtToken.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "contentType", "value": "application/json" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{jwtToken}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Donantes",
+      "item": [
+        {
+          "name": "Crear expediente",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rndCode\": \"RND-POSTMAN-001\",\n  \"originatingIpsName\": \"IPS E2E\",\n  \"clinicalService\": \"UCI\",\n  \"fullName\": \"Donante sintético Postman\",\n  \"documentNumber\": \"DOC-POSTMAN-001\",\n  \"status\": \"EN_VALORACION\",\n  \"bloodGroup\": \"O\",\n  \"rhFactor\": \"POSITIVE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set('donorId', pm.response.json().id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar expedientes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Consultar expediente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
+          }
+        },
+        {
+          "name": "Actualizar expediente",
+          "request": {
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clinicalService\": \"UCI Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documentos fuente",
+      "item": [
+        {
+          "name": "Cargar documento",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "documentCategory", "value": "CERTIFICACION", "type": "text" }
+              ]
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
+          }
+        },
+        {
+          "name": "Listar documentos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
+          }
+        },
+        {
+          "name": "Consultar documento",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "Descargar documento",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/download"
+          }
+        }
+      ]
+    },
+    {
+      "name": "OCR",
+      "item": [
+        {
+          "name": "Iniciar OCR",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/ocr"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 202) { pm.environment.set('jobId', pm.response.json().id || pm.response.json().jobId); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Consultar trabajo OCR",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/ocr/jobs/{{jobId}}"
+          }
+        },
+        {
+          "name": "Listar campos OCR",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/ocr/jobs/{{jobId}}/fields"
+          }
+        },
+        {
+          "name": "Validar campo OCR",
+          "request": {
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMADO\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/ocr/fields/{{fieldId}}/validation"
+          }
+        },
+        {
+          "name": "Propagar campo OCR confirmado",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fieldId\": \"{{fieldId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/clinical-data/propagate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Legalización",
+      "item": [
+        {
+          "name": "Evaluar legalización",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mechanism\": \"PRESUNCION_LEGAL\",\n  \"isAdult\": true,\n  \"isColombian\": true,\n  \"isResident\": true,\n  \"oppositionRegistered\": false,\n  \"representatives\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/legalization"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catálogo documental",
+      "item": [
+        {
+          "name": "Listar catálogo",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-catalog"
+          }
+        },
+        {
+          "name": "Crear plantilla (ADMIN)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"templateCode\": \"ANEXO-1-POSTMAN\",\n  \"name\": \"Anexo 1 - Prueba\",\n  \"category\": \"PILOTO\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/document-catalog"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set('templateId', pm.response.json().id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear versión borrador (ADMIN)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"versionNumber\": \"1.0.0\",\n  \"effectiveFrom\": \"2026-11-02T00:00:00.000Z\",\n  \"jsonSchema\": {\n    \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n    \"type\": \"object\",\n    \"additionalProperties\": false,\n    \"required\": [\"code\"],\n    \"properties\": { \"code\": { \"type\": \"string\", \"minLength\": 1 } }\n  },\n  \"uiSchema\": { \"sections\": [{ \"id\": \"main\", \"fields\": [\"code\"] }] },\n  \"mappingConfig\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set('versionId', pm.response.json().id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar versiones",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions"
+          }
+        },
+        {
+          "name": "Validar versión (ADMIN)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions/{{versionId}}/validate"
+          }
+        },
+        {
+          "name": "Publicar versión (ADMIN)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions/{{versionId}}/publish"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Instancias documentales",
+      "item": [
+        {
+          "name": "Crear instancia",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"templateVersionId\": \"{{versionId}}\",\n  \"responseData\": { \"code\": \"BORRADOR-001\" },\n  \"sourceProvenance\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/document-instances"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) { pm.environment.set('instanceId', pm.response.json().id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar instancias del expediente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/document-instances"
+          }
+        },
+        {
+          "name": "Consultar instancia e historial",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}"
+          }
+        },
+        {
+          "name": "Guardar nueva revisión",
+          "request": {
+            "method": "PATCH",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"responseData\": { \"code\": \"REVISION-002\" },\n  \"sourceProvenance\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}"
+          }
+        },
+        {
+          "name": "Validar instancia",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/validate"
+          }
+        },
+        {
+          "name": "Resolver conflicto",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fieldPath\": \"code\",\n  \"decision\": \"MANUAL_SELECTED\",\n  \"justification\": \"Decisión documentada por el usuario autorizado\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/conflicts/resolve"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -26,6 +26,12 @@ export class PrismaOcrRepository implements OcrRepository {
       orderBy: { createdAt: "desc" },
     });
   }
+  listQueuedJobs() {
+    return this.prisma.ocrProcessingJob.findMany({
+      where: { status: "EN_COLA" },
+      orderBy: { createdAt: "asc" },
+    });
+  }
   listFields(jobId: string) {
     return this.prisma.ocrExtractedField.findMany({
       where: { ocrJobId: jobId },

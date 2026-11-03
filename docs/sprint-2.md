@@ -55,10 +55,10 @@ instalado en el host o contenedor y configurado mediante `TESSERACT_BIN`.
 
 ## Implementado con limitaciones
 
-- El adaptador local de Tesseract rechaza PDF y no genera candidatos canónicos
-  de extremo a extremo. Por ello, no se declara soporte OCR completo para PDF
-  ni para Tesseract hasta incorporar rasterización controlada y un mapeo
-  estructurado validado.
+- El adaptador local de Tesseract ahora admite PDF mediante rasterización
+  controlada y convierte TSV a candidatos únicamente con `OCR_FIELD_ALIASES`.
+  El soporte operativo requiere `tesseract`, `pdfinfo`, `pdftoppm` y un
+  diccionario institucional configurado.
 - Gemini está integrado, pero requiere credenciales y aprobación institucional
   antes de procesar información real.
 - La propagación usa claves canónicas planas y no sustituye la homologación
@@ -66,12 +66,9 @@ instalado en el host o contenedor y configurado mediante `TESSERACT_BIN`.
 
 ## Pendiente de desarrollo
 
-- Adaptador seguro PDF-a-imágenes con límites de páginas, resolución, memoria,
-  tiempo y aislamiento del proceso.
-- Conversión de la salida de Tesseract a candidatos mediante un diccionario
-  canónico explícito; no se deben inferir campos clínicos arbitrariamente.
 - Recuperación/reconciliación de trabajos `EN_COLA` o interrumpidos después de
-  reiniciar el worker.
+  reiniciar el worker: implementada mediante reencolado por `jobId`; requiere
+  Redis activo para validación operativa.
 - Antivirus o cuarentena para despliegues que acepten documentos no confiables.
 
 ## Pendiente de homologación institucional

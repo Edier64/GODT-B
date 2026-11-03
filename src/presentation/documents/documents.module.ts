@@ -5,6 +5,8 @@ import { DOCUMENT_REPOSITORY } from "../../application/documents/document.reposi
 import { FILE_STORAGE_PORT } from "../../application/documents/file-storage.port";
 import { PrismaDocumentRepository } from "../../infrastructure/documents/prisma-document.repository";
 import { LocalPrivateStorageAdapter } from "../../infrastructure/documents/local-private-storage.adapter";
+import { R2StorageAdapter } from "../../infrastructure/documents/r2-storage.adapter";
+import { ConfigService } from "@nestjs/config";
 import { UploadSourceDocumentUseCase } from "../../application/documents/upload-source-document.use-case";
 import { GetSourceDocumentUseCase } from "../../application/documents/get-source-document.use-case";
 import { DocumentsController } from "./documents.controller";
@@ -18,7 +20,19 @@ import { DocumentsController } from "./documents.controller";
     PrismaDocumentRepository,
     LocalPrivateStorageAdapter,
     { provide: DOCUMENT_REPOSITORY, useExisting: PrismaDocumentRepository },
-    { provide: FILE_STORAGE_PORT, useExisting: LocalPrivateStorageAdapter },
+    {
+      provide: FILE_STORAGE_PORT,
+      inject: [ConfigService, LocalPrivateStorageAdapter],
+      useFactory: (
+        config: ConfigService,
+        local: LocalPrivateStorageAdapter,
+      ) => {
+        if (config.get("STORAGE_PROVIDER", "local") === "r2") {
+          return new R2StorageAdapter(config);
+        }
+        return local;
+      },
+    },
   ],
   exports: [FILE_STORAGE_PORT, DOCUMENT_REPOSITORY],
 })

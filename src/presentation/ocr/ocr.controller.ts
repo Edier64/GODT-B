@@ -46,12 +46,9 @@ export class OcrController {
 
   @Get("ocr/jobs/:jobId")
   getJob(@Param("jobId") id: string, @CurrentUser() actor: AuthenticatedUser) {
-    return this.workflow
-      .fields(id, actor)
-      .then((fields) => ({ jobId: id, fields }))
-      .catch((error: unknown) => {
-        throw this.toHttp(error);
-      });
+    return this.workflow.getJob(id, actor).catch((error: unknown) => {
+      throw this.toHttp(error);
+    });
   }
 
   @Get("ocr/jobs/:jobId/fields")

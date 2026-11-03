@@ -1,0 +1,49 @@
+{
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["title", "amount", "lines"],
+    "properties": {
+      "title": { "type": "string", "minLength": 1 },
+      "amount": { "type": "number", "minimum": 0 },
+      "active": { "type": "boolean", "default": true },
+      "reviewAt": { "type": ["string", "null"], "format": "date-time" },
+      "contact": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" }
+        }
+      },
+      "lines": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": { "type": "string", "enum": ["A", "B"] },
+            "quantity": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    }
+  },
+  "uiSchema": {
+    "sections": [
+      { "id": "general", "title": "General", "fields": ["title", "amount", "active", "reviewAt", "contact"] },
+      { "id": "lines", "title": "Lines", "fields": ["lines"] }
+    ],
+    "fieldConfigs": {
+      "$.lines": {
+        "component": "table",
+        "columns": [
+          { "key": "code", "label": "Code" },
+          { "key": "quantity", "label": "Quantity" }
+        ]
+      },
+      "$.lines[].quantity": { "readonly": true }
+    }
+  },
+  "mappingConfig": []
+}

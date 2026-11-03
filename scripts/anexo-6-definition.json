@@ -1,0 +1,138 @@
+{
+  "jsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "rndCode": { "type": "string", "title": "Código donante" },
+      "city": { "type": "string", "title": "Ciudad" },
+      "originatingIpsName": { "type": "string", "title": "IPS generadora" },
+      "scheduledStartAt": { "type": ["string", "null"], "format": "date-time", "title": "Inicio programado" },
+      "actualStartAt": { "type": ["string", "null"], "format": "date-time", "title": "Inicio real" },
+      "clampAt": { "type": ["string", "null"], "format": "date-time", "title": "Hora de clampeo" },
+      "finishedAt": { "type": ["string", "null"], "format": "date-time", "title": "Finalización" },
+      "organRecoveries": {
+        "type": "array",
+        "title": "Registro de órganos rescatados",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "component": { "type": "string", "enum": ["HEART", "RIGHT_KIDNEY", "LEFT_KIDNEY", "LIVER", "PANCREAS", "INTESTINE", "LUNG", "OTHER"] },
+            "responsibleInstitution": { "type": ["string", "null"] },
+            "nonExtractionReason": { "type": ["string", "null"] }
+          },
+          "required": ["component"]
+        },
+        "default": [
+          { "component": "HEART", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "RIGHT_KIDNEY", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "LEFT_KIDNEY", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "LIVER", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "PANCREAS", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "INTESTINE", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "LUNG", "responsibleInstitution": null, "nonExtractionReason": null },
+          { "component": "OTHER", "responsibleInstitution": null, "nonExtractionReason": null }
+        ]
+      },
+      "personnel": {
+        "type": "array",
+        "title": "Personal responsable de la extracción",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "procedure": { "type": "string", "enum": ["NEPHRECTOMY", "HEPATECTOMY", "CARDIECTOMY", "PNEUMONECTOMY", "PANCREATECTOMY", "OTHER_ORGANS"] },
+            "surgeon": { "type": ["string", "null"] },
+            "assistant": { "type": ["string", "null"] },
+            "instrumentation": { "type": ["string", "null"] }
+          },
+          "required": ["procedure"]
+        },
+        "default": [
+          { "procedure": "NEPHRECTOMY", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "HEPATECTOMY", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "CARDIECTOMY", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "PNEUMONECTOMY", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "PANCREATECTOMY", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "OTHER_ORGANS", "surgeon": null, "assistant": null, "instrumentation": null },
+          { "procedure": "OTHER_ORGANS", "surgeon": null, "assistant": null, "instrumentation": null }
+        ]
+      },
+      "anesthesiologist": { "type": ["string", "null"], "title": "Anestesiólogo" },
+      "perfusionist": { "type": ["string", "null"], "title": "Perfusionista" },
+      "spleenLymphNodeResection": { "type": ["string", "null"], "enum": ["SI", "NO", null], "title": "Resección de bazo y ganglios" },
+      "preservationSolutions": {
+        "type": "array",
+        "title": "Soluciones de preservación de órganos",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "route": { "type": "string", "enum": ["AORTA", "PORTA", "KIDNEY_BANK", "LIVER_BANK", "HEART_BANK", "LUNG_BANK", "OTHER"] },
+            "type": { "type": ["string", "null"] },
+            "quantityCc": { "type": ["number", "null"], "minimum": 0 }
+          },
+          "required": ["route"]
+        },
+        "default": [
+          { "route": "AORTA", "type": null, "quantityCc": null },
+          { "route": "PORTA", "type": null, "quantityCc": null },
+          { "route": "KIDNEY_BANK", "type": null, "quantityCc": null },
+          { "route": "LIVER_BANK", "type": null, "quantityCc": null },
+          { "route": "HEART_BANK", "type": null, "quantityCc": null },
+          { "route": "LUNG_BANK", "type": null, "quantityCc": null },
+          { "route": "OTHER", "type": null, "quantityCc": null },
+          { "route": "OTHER", "type": null, "quantityCc": null }
+        ]
+      },
+      "tissueRecoveries": {
+        "type": "array",
+        "title": "Registro de tejidos para rescate",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "component": { "type": "string", "enum": ["OCULAR", "OSTEOMUSCULAR", "CARDIOVASCULAR", "SKIN", "OTHER"] },
+            "responsibleBank": { "type": ["string", "null"] },
+            "extractionProfessional": { "type": ["string", "null"] },
+            "nonExtractionReason": { "type": ["string", "null"] }
+          },
+          "required": ["component"]
+        },
+        "default": [
+          { "component": "OCULAR", "responsibleBank": null, "extractionProfessional": null, "nonExtractionReason": null },
+          { "component": "OSTEOMUSCULAR", "responsibleBank": null, "extractionProfessional": null, "nonExtractionReason": null },
+          { "component": "CARDIOVASCULAR", "responsibleBank": null, "extractionProfessional": null, "nonExtractionReason": null },
+          { "component": "SKIN", "responsibleBank": null, "extractionProfessional": null, "nonExtractionReason": null },
+          { "component": "OTHER", "responsibleBank": null, "extractionProfessional": null, "nonExtractionReason": null }
+        ]
+      },
+      "generalFindings": { "type": ["string", "null"], "title": "Hallazgos relevantes", "maxLength": 4000 },
+      "responsibleProfessionalName": { "type": ["string", "null"], "title": "Nombre del responsable" },
+      "responsibleProfessionalId": { "type": ["string", "null"], "title": "c.c." }
+    }
+  },
+  "uiSchema": {
+    "sections": [
+      { "id": "header", "title": "Identificación", "fields": ["rndCode", "city", "originatingIpsName"] },
+      { "id": "surgery", "title": "Cirugía de rescate o extracción", "fields": ["scheduledStartAt", "actualStartAt", "clampAt", "finishedAt"] },
+      { "id": "organs", "title": "Registro de órganos rescatados", "fields": ["organRecoveries"] },
+      { "id": "team", "title": "Personal responsable", "fields": ["personnel", "anesthesiologist", "perfusionist"] },
+      { "id": "studies", "title": "Estudios de inmunogenética", "fields": ["spleenLymphNodeResection"] },
+      { "id": "preservation", "title": "Soluciones de preservación", "fields": ["preservationSolutions"] },
+      { "id": "tissues", "title": "Registro de tejidos para rescate", "fields": ["tissueRecoveries"] },
+      { "id": "closing", "title": "Hallazgos y responsable", "fields": ["generalFindings", "responsibleProfessionalName", "responsibleProfessionalId"] }
+    ],
+    "fieldConfigs": {
+      "$.organRecoveries": { "component": "table", "columns": [{ "key": "component", "label": "Componente", "width": "25%" }, { "key": "responsibleInstitution", "label": "Institución responsable", "width": "35%" }, { "key": "nonExtractionReason", "label": "Causa de no extracción", "width": "40%" }] },
+      "$.personnel": { "component": "table", "columns": [{ "key": "procedure", "label": "Procedimiento", "width": "25%" }, { "key": "surgeon", "label": "Cirujano(s)", "width": "25%" }, { "key": "assistant", "label": "Ayudante", "width": "25%" }, { "key": "instrumentation", "label": "Instrumentación", "width": "25%" }] },
+      "$.preservationSolutions": { "component": "table", "columns": [{ "key": "route", "label": "Destino", "width": "35%" }, { "key": "type", "label": "Tipo", "width": "35%" }, { "key": "quantityCc", "label": "Cantidad (c.c)", "width": "30%" }] },
+      "$.tissueRecoveries": { "component": "table", "columns": [{ "key": "component", "label": "Componente", "width": "25%" }, { "key": "responsibleBank", "label": "Banco responsable", "width": "25%" }, { "key": "extractionProfessional", "label": "Profesional / Técnico", "width": "25%" }, { "key": "nonExtractionReason", "label": "Causa de no extracción", "width": "25%" }] }
+    }
+  },
+  "mappingConfig": [
+    { "targetKey": "rndCode", "sourcePath": "donorRecord.rndCode", "sourceKind": "DONOR_RECORD", "dataType": "string", "writable": false },
+    { "targetKey": "originatingIpsName", "sourcePath": "donorRecord.originatingIpsName", "sourceKind": "DONOR_RECORD", "dataType": "string", "writable": false }
+  ]
+}

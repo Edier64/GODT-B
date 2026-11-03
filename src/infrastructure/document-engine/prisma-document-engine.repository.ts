@@ -216,7 +216,11 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
         include: { template: true },
       });
       if (!version) throw new DocumentEngineNotFoundError("Version not found");
-      if (version.status !== "PUBLISHED") {
+      const draftPilotEnabled =
+        process.env.NODE_ENV === "development" &&
+        process.env.DOCUMENT_ENGINE_ALLOW_DRAFT_INSTANCES === "true" &&
+        input.access.isAdmin;
+      if (version.status !== "PUBLISHED" && !draftPilotEnabled) {
         throw new DocumentEngineValidationError(
           "Only published versions can create normal instances",
         );
@@ -294,10 +298,16 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
           async (tx) => {
             const instance = await tx.documentInstance.findUnique({
               where: { id: input.instanceId },
+              include: { currentRevision: true, templateVersion: true },
             });
             if (!instance)
               throw new DocumentEngineNotFoundError("Instance not found");
             await this.assertDonorAccess(instance.donorId, input.access, tx);
+            this.assertProtectedFieldsUnchanged(
+              instance.templateVersion.uiSchema,
+              instance.currentRevision?.responseData,
+              input.responseData,
+            );
             await this.validateProvenance(
               tx,
               instance.donorId,
@@ -605,6 +615,47 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
     if (!access.isAdmin && access.institutionalIps.length === 0) {
       throw new DocumentEngineAccessDeniedError("Institutional scope denied");
     }
+  }
+
+  private assertProtectedFieldsUnchanged(
+    uiSchema: unknown,
+    currentResponse: unknown,
+    nextResponse: unknown,
+  ) {
+    if (!this.isRecord(uiSchema) || !this.isRecord(uiSchema.fieldConfigs)) {
+      return;
+    }
+    for (const [path, config] of Object.entries(uiSchema.fieldConfigs)) {
+      if (!this.isRecord(config) || config.readonly !== true) continue;
+      const currentValues = this.readPathValues(currentResponse, path);
+      const nextValues = this.readPathValues(nextResponse, path);
+      if (JSON.stringify(currentValues) !== JSON.stringify(nextValues)) {
+        throw new DocumentEngineValidationError(
+          `Readonly field '${path}' cannot be modified`,
+        );
+      }
+    }
+  }
+
+  private readPathValues(value: unknown, path: string): unknown[] {
+    if (!path.startsWith("$.")) return [];
+    const segments = path.slice(2).split(".").filter(Boolean);
+    const read = (current: unknown, index: number): unknown[] => {
+      if (index === segments.length) return [current];
+      if (!this.isRecord(current)) return [undefined];
+      const segment = segments[index];
+      if (segment.endsWith("[]")) {
+        const arrayValue = current[segment.slice(0, -2)];
+        if (!Array.isArray(arrayValue)) return [undefined];
+        return arrayValue.flatMap((item) => read(item, index + 1));
+      }
+      return read(current[segment], index + 1);
+    };
+    return read(value, 0);
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   private assertScope(

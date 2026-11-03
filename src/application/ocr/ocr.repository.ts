@@ -9,6 +9,7 @@ export interface OcrRepository {
     correlationId: string;
   }): Promise<OcrProcessingJob>;
   findQueuedJob(sourceDocumentId: string): Promise<OcrProcessingJob | null>;
+  listQueuedJobs(): Promise<OcrProcessingJob[]>;
   findJob(id: string): Promise<OcrProcessingJob | null>;
   listFields(jobId: string): Promise<OcrExtractedField[]>;
   saveCandidates(

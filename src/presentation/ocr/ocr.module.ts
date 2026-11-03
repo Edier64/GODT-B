@@ -5,11 +5,13 @@ import { AuthModule } from "../auth/auth.module";
 import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
 import { DocumentsModule } from "../documents/documents.module";
 import { OCR_PROVIDER } from "../../application/ocr/ocr-provider.port";
+import { PDF_RASTERIZER } from "../../application/ocr/pdf-rasterizer.port";
 import { OCR_QUEUE, OCR_QUEUE_NAME } from "../../application/ocr/ocr.queue";
 import { OCR_REPOSITORY } from "../../application/ocr/ocr.repository";
 import { PrismaOcrRepository } from "../../infrastructure/ocr/prisma-ocr.repository";
 import { GeminiOcrAdapter } from "../../infrastructure/ocr/gemini-ocr.adapter";
 import { TesseractOcrAdapter } from "../../infrastructure/ocr/tesseract-ocr.adapter";
+import { LocalPdfRasterizerAdapter } from "../../infrastructure/ocr/local-pdf-rasterizer.adapter";
 import { OcrWorker } from "../../infrastructure/ocr/ocr-worker";
 import { StartOcrUseCase } from "../../application/ocr/start-ocr.use-case";
 import { OcrWorkflowUseCase } from "../../application/ocr/ocr-workflow.use-case";
@@ -22,10 +24,12 @@ import { OcrController } from "./ocr.controller";
     PrismaOcrRepository,
     GeminiOcrAdapter,
     TesseractOcrAdapter,
+    LocalPdfRasterizerAdapter,
     OcrWorker,
     StartOcrUseCase,
     OcrWorkflowUseCase,
     { provide: OCR_REPOSITORY, useExisting: PrismaOcrRepository },
+    { provide: PDF_RASTERIZER, useExisting: LocalPdfRasterizerAdapter },
     {
       provide: OCR_PROVIDER,
       inject: [ConfigService, GeminiOcrAdapter, TesseractOcrAdapter],

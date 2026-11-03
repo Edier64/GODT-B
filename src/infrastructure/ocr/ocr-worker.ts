@@ -6,6 +6,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, Worker } from "bullmq";
+import { Queue } from "bullmq";
+import { Logger } from "@nestjs/common";
 import {
   FILE_STORAGE_PORT,
   FileStoragePort,
@@ -19,17 +21,20 @@ import {
   OCR_REPOSITORY,
   OcrRepository,
 } from "../../application/ocr/ocr.repository";
+import { OCR_QUEUE } from "../../application/ocr/ocr.queue";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class OcrWorker implements OnModuleInit, OnModuleDestroy {
   private worker?: Worker;
+  private readonly logger = new Logger(OcrWorker.name);
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     @Inject(FILE_STORAGE_PORT) private readonly storage: FileStoragePort,
     @Inject(OCR_PROVIDER) private readonly provider: OcrProviderPort,
     @Inject(OCR_REPOSITORY) private readonly repository: OcrRepository,
+    @Inject(OCR_QUEUE) private readonly queue: Queue,
   ) {}
 
   onModuleInit() {
@@ -37,9 +42,33 @@ export class OcrWorker implements OnModuleInit, OnModuleDestroy {
       connection: this.connection(),
       concurrency: Number(this.config.get("OCR_CONCURRENCY", 1)),
     });
+    void this.requeuePersistedJobs().catch((error: unknown) => {
+      this.logger.error(
+        `Unable to requeue persisted OCR jobs: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    });
   }
   async onModuleDestroy() {
     await this.worker?.close();
+  }
+
+  private async requeuePersistedJobs() {
+    const jobs = await this.repository.listQueuedJobs();
+    await Promise.all(
+      jobs.map((job) =>
+        this.queue.add(
+          "process-document",
+          { jobId: job.id },
+          {
+            jobId: job.id,
+            attempts: 3,
+            backoff: { type: "exponential", delay: 1000 },
+          },
+        ),
+      ),
+    );
   }
 
   private async process(job: Job<{ jobId: string }>) {

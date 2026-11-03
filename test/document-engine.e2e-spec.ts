@@ -168,10 +168,16 @@ describeE2e("Document engine HTTP", () => {
           effectiveFrom: new Date().toISOString(),
           jsonSchema: {
             type: "object",
-            properties: { code: { type: "string" } },
-            required: ["code"],
+            properties: {
+              code: { type: "string" },
+              protectedValue: { type: "string" },
+            },
+            required: ["code", "protectedValue"],
           },
-          uiSchema: { sections: [{ id: "main", fields: ["code"] }] },
+          uiSchema: {
+            sections: [{ id: "main", fields: ["code", "protectedValue"] }],
+            fieldConfigs: { "$.protectedValue": { readonly: true } },
+          },
           mappingConfig: [],
         }),
       },
@@ -302,7 +308,7 @@ describeE2e("Document engine HTTP", () => {
         method: "POST",
         body: JSON.stringify({
           templateVersionId: publishedVersionId,
-          responseData: { code: "one" },
+          responseData: { code: "one", protectedValue: "source" },
         }),
       },
     );
@@ -314,7 +320,9 @@ describeE2e("Document engine HTTP", () => {
       ipsAToken,
       {
         method: "PATCH",
-        body: JSON.stringify({ responseData: { code: "two" } }),
+        body: JSON.stringify({
+          responseData: { code: "two", protectedValue: "source" },
+        }),
       },
     );
     expect(revision.status).toBe(200);
@@ -329,6 +337,26 @@ describeE2e("Document engine HTTP", () => {
     expect(stored?.currentRevisionId).toBe(
       stored?.revisions.find((item) => item.revisionNumber === 2)?.id,
     );
+
+    const protectedAttempt = await request(
+      `/api/v1/document-instances/${instance.id}`,
+      ipsAToken,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          responseData: { code: "three", protectedValue: "tampered" },
+        }),
+      },
+    );
+    expect(protectedAttempt.status).toBe(422);
+    const afterProtectedAttempt = await prisma.documentInstance.findUnique({
+      where: { id: instance.id },
+      include: { currentRevision: true },
+    });
+    expect(afterProtectedAttempt?.currentRevision?.responseData).toEqual({
+      code: "two",
+      protectedValue: "source",
+    });
   });
 
   it("rejects administrative publication by a non-admin", async () => {
@@ -374,7 +402,7 @@ describeE2e("Document engine HTTP", () => {
         method: "POST",
         body: JSON.stringify({
           templateVersionId: publishedVersionId,
-          responseData: { code: "conflict" },
+          responseData: { code: "conflict", protectedValue: "source" },
           sourceProvenance: [
             {
               fieldPath: "code",
@@ -398,7 +426,9 @@ describeE2e("Document engine HTTP", () => {
       ipsAToken,
       {
         method: "PATCH",
-        body: JSON.stringify({ responseData: { code: "next" } }),
+        body: JSON.stringify({
+          responseData: { code: "next", protectedValue: "source" },
+        }),
       },
     );
     expect(blocked.status).toBe(409);

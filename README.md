@@ -167,13 +167,14 @@ Validado localmente:
 - Redis 7.4: contenedor `healthy`, `PONG` y datos conservados después del
   reinicio.
 - pgAdmin 4: contenedor activo en `http://localhost:5050`.
-- Prisma: cinco migraciones desplegadas contra PostgreSQL real y sin cambios
-  pendientes.
+- Prisma: el esquema y las migraciones versionadas deben validarse contra
+  PostgreSQL activo con `npx prisma migrate status`; en esta sesión ese
+  servicio no estaba disponible.
 - NestJS: `GET /health` respondió `status=ok`, `database=up` y `redis=up`.
 - Swagger: `GET /docs` respondió HTTP 200.
-- Jest: 14 pruebas unitarias pasadas. Integración PostgreSQL: 3 pruebas
-  pasadas, incluyendo rollback de auditoría y legalización atómica. Build,
-  ESLint y Prettier: correctos.
+- Jest, Build y Prettier: correctos en la validación del Sprint 05. Las
+  pruebas de integración requieren PostgreSQL activo y no se declaran
+  ejecutadas cuando el servicio no está disponible.
 - `npm audit fix` fue ejecutado sin `--force`. Permanecen vulnerabilidades
   transitivas en Jest/CLI/Prisma y vulnerabilidades de runtime asociadas a
   Multer, `js-yaml` y Prisma; sus correcciones disponibles requieren cambios

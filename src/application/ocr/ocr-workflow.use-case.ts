@@ -18,6 +18,20 @@ export class OcrWorkflowUseCase {
     return this.repository.listFields(jobId);
   }
 
+  async getJob(jobId: string, actor: AuthenticatedUser) {
+    const job = await this.repository.findJob(jobId);
+    if (!job) throw new OcrNotFoundError();
+    await this.assertAccess(job.sourceDocumentId, actor);
+    const fields = await this.repository.listFields(jobId);
+    return {
+      jobId: job.id,
+      sourceDocumentId: job.sourceDocumentId,
+      status: job.status,
+      errorCode: job.errorCode,
+      fields,
+    };
+  }
+
   async validate(
     fieldId: string,
     input: {
