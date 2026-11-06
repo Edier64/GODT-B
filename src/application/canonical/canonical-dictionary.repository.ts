@@ -31,6 +31,7 @@ export interface CanonicalDictionaryRepository {
     sourceRevisionId?: string | null;
     expectedVersion?: number;
     actorUserId: string;
+    tx?: unknown;
   }): Promise<ProcessCanonicalValue>;
 
   addHistoryEntry(data: {
@@ -46,11 +47,18 @@ export interface CanonicalDictionaryRepository {
     sourceDocumentId?: string | null;
     versionNumber: number;
     actorUserId: string;
+    tx?: unknown;
   }): Promise<ProcessCanonicalHistory>;
 
   listHistory(
     processId: string,
     canonicalFieldKey: string,
+  ): Promise<ProcessCanonicalHistory[]>;
+
+  listObservations(
+    processId: string,
+    canonicalFieldKey: string,
+    contextFilter?: string,
   ): Promise<ProcessCanonicalHistory[]>;
 
   updateConflictStatus(
@@ -59,6 +67,7 @@ export interface CanonicalDictionaryRepository {
     status: "NONE" | "CONFLICT_DETECTED" | "RESOLVED",
     details?: Record<string, unknown> | null,
     actorUserId?: string,
+    tx?: unknown,
   ): Promise<ProcessCanonicalValue>;
 }
 

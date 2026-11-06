@@ -227,6 +227,26 @@ export class CanonicalPropagationEngine {
         (inst.currentRevision?.responseData as Record<string, unknown>) || {};
       const existingVal = getNestedValue(currentResponseData, fieldPath);
 
+      // Si el campo es REPEATABLE (mediciones clínicas seriadas), no sobreescribir silenciosamente
+      // a menos que el mapeo destino coincida explícitamente con el contexto de la muestra
+      if (fieldDef.cardinality === "REPEATABLE") {
+        const isContextMatch =
+          targetMapping.repeatableSelectionStrategy === "SAMPLE_CONTEXT_MATCH" &&
+          targetMapping.sampleContextFilter &&
+          input.sampleContext &&
+          targetMapping.sampleContextFilter === input.sampleContext;
+
+        if (!isContextMatch) {
+          result.propagatedInstances.push({
+            instanceId: inst.id,
+            documentCode: inst.documentCode,
+            fieldPath,
+            status: "SKIPPED_LOCKED",
+          });
+          continue;
+        }
+      }
+
       // Si el valor ya es idéntico al nuevo valor propuesto, no hay nada que propagar
       if (JSON.stringify(existingVal) === JSON.stringify(input.value)) {
         continue;
@@ -305,6 +325,24 @@ export class CanonicalPropagationEngine {
             },
             input.actorUserId,
           );
+
+          await this.audit.record({
+            actorUserId: input.actorUserId,
+            action: "CANONICAL_CONFLICT_DETECTED",
+            entityType: "PROCESS_CANONICAL_VALUE",
+            entityId: currentVal.id,
+            correlationId: input.processId,
+            metadata: {
+              canonicalFieldKey: input.canonicalFieldKey,
+              sourceInstanceId: input.sourceInstanceId,
+              targetInstanceId: inst.id,
+              targetDocumentCode: inst.documentCode,
+              fieldPath,
+              existingValue: existingVal,
+              proposedValue: input.value,
+              detectedAt: new Date().toISOString(),
+            },
+          });
         }
       } else {
         // No hay conflicto: actualiza limpiamente la instancia
@@ -386,12 +424,44 @@ export class CanonicalPropagationEngine {
       let val: unknown = undefined;
       let sourceKind: CanonicalSourceKind = "PROCESS_CANONICAL";
 
-      if (valueMap.has(key)) {
-        val = valueMap.get(key)!.currentValue;
-        sourceKind = valueMap.get(key)!.sourceKind;
-      } else if (process?.donor && m.scope === "DONOR") {
-        val = this.readFromDonor(process.donor, key);
-        sourceKind = "DONOR_RECORD";
+      const fieldDef = await this.repository.findFieldByKey(key);
+      const isRepeatable = m.cardinality === "REPEATABLE" || fieldDef?.cardinality === "REPEATABLE";
+
+      if (isRepeatable) {
+        // En campos REPEATABLE (mediciones seriadas clínicas como pH, creatinina):
+        // Se aplica la estrategia explícita de vinculación documental
+        const observations = await this.repository.listObservations(processId, key);
+
+        if (m.repeatableSelectionStrategy === "SAMPLE_CONTEXT_MATCH" && m.sampleContextFilter) {
+          const match = observations.find((o) => o.sampleContext === m.sampleContextFilter);
+          if (match) {
+            val = match.value;
+            sourceKind = match.sourceKind;
+          }
+        } else if (m.repeatableSelectionStrategy === "DETERMINISTIC_RULE" && m.deterministicRule === "BASELINE") {
+          // Línea base: la medición más temprana registrada
+          if (observations.length > 0) {
+            const baseline = observations[observations.length - 1];
+            val = baseline.value;
+            sourceKind = baseline.sourceKind;
+          }
+        } else if (m.repeatableSelectionStrategy === "MANUAL_SELECTION" || m.requiresHumanSelection) {
+          // Exige selección humana explícita. No precarga silenciosamente.
+          val = undefined;
+          continue;
+        } else {
+          // Sin regla segura explícita: no precargar automáticamente
+          val = undefined;
+          continue;
+        }
+      } else {
+        if (valueMap.has(key)) {
+          val = valueMap.get(key)!.currentValue;
+          sourceKind = valueMap.get(key)!.sourceKind;
+        } else if (process?.donor && m.scope === "DONOR") {
+          val = this.readFromDonor(process.donor, key);
+          sourceKind = "DONOR_RECORD";
+        }
       }
 
       if (val !== undefined && val !== null) {
@@ -493,6 +563,11 @@ export class CanonicalPropagationEngine {
           unit: anyItem.unit,
           readOnly: anyItem.readOnly,
           allowedSources: anyItem.allowedSources,
+          cardinality: anyItem.cardinality,
+          repeatableSelectionStrategy: anyItem.repeatableSelectionStrategy,
+          sampleContextFilter: anyItem.sampleContextFilter,
+          deterministicRule: anyItem.deterministicRule,
+          requiresHumanSelection: anyItem.requiresHumanSelection,
         };
       }
       return item as CanonicalFieldMapping;

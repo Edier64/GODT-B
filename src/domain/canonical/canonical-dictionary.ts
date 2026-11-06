@@ -86,6 +86,12 @@ export interface ProcessCanonicalHistory {
   createdAt: Date;
 }
 
+export type RepeatableSelectionStrategy =
+  | "MANUAL_SELECTION"
+  | "SAMPLE_CONTEXT_MATCH"
+  | "TIME_WINDOW"
+  | "DETERMINISTIC_RULE";
+
 export interface CanonicalFieldMapping {
   schemaPath: string; // JSON path in form schema (e.g. "patient.fullName" or "$.patient.fullName")
   canonicalFieldKey: string;
@@ -95,12 +101,34 @@ export interface CanonicalFieldMapping {
   unit?: string;
   readOnly?: boolean;
   allowedSources?: CanonicalSourceKind[];
-  repeatableSelectionStrategy?: "LATEST" | "EARLIEST" | "MATCH_SAMPLE" | "EXACT_DATE";
-  sampleContext?: string;
+  cardinality?: CanonicalCardinality;
+  repeatableSelectionStrategy?: RepeatableSelectionStrategy;
+  sampleContextFilter?: string; // e.g. "GASOMETRIA_BASAL", "UCI_INGRESO"
+  timeWindowHours?: number;
+  deterministicRule?: "BASELINE" | "PRE_OP" | "POST_CLAMP" | "FINAL";
+  requiresHumanSelection?: boolean;
+  homologationStatus?: "VALIDATED" | "PENDING_HOMOLOGATION";
   transform?: {
     type: "UPPERCASE" | "LOWERCASE" | "ROUND" | "BOOLEAN_INVERT";
     params?: Record<string, unknown>;
   };
+}
+
+export interface CanonicalObservation {
+  id: string;
+  processId: string;
+  canonicalFieldKey: string;
+  value: unknown;
+  unit?: string | null;
+  effectiveAt: Date;
+  sampleContext?: string | null;
+  sourceKind: CanonicalSourceKind;
+  sourceInstanceId?: string | null;
+  sourceRevisionId?: string | null;
+  sourceDocumentId?: string | null;
+  versionNumber: number;
+  createdById: string;
+  createdAt: Date;
 }
 
 export interface PropagationResult {

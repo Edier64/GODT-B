@@ -104,8 +104,10 @@ export class PrismaCanonicalDictionaryRepository
     sourceRevisionId?: string | null;
     expectedVersion?: number;
     actorUserId: string;
+    tx?: any;
   }): Promise<ProcessCanonicalValue> {
-    const existing = await this.prisma.processCanonicalValue.findUnique({
+    const client = data.tx || this.prisma;
+    const existing = await client.processCanonicalValue.findUnique({
       where: {
         processId_canonicalFieldKey: {
           processId: data.processId,
@@ -114,10 +116,32 @@ export class PrismaCanonicalDictionaryRepository
       },
     });
 
+    // 1. Verificación de concurrencia optimista
+    if (
+      data.expectedVersion !== undefined &&
+      existing &&
+      existing.versionNumber !== data.expectedVersion
+    ) {
+      throw new Error(
+        `Conflicto de concurrencia para marcador '${data.canonicalFieldKey}': versión esperada ${data.expectedVersion}, pero la versión actual en base de datos es ${existing.versionNumber}.`,
+      );
+    }
+
+    // 2. Idempotencia: si ya existe exactamente el mismo valor, origen y revisión, retornar sin mutar
+    if (
+      existing &&
+      JSON.stringify(existing.currentValue) === JSON.stringify(data.value) &&
+      existing.sourceKind === data.sourceKind &&
+      existing.sourceRevisionId === (data.sourceRevisionId || null) &&
+      existing.conflictStatus === "NONE"
+    ) {
+      return this.mapProcessValue(existing);
+    }
+
     const nextVersion = existing ? existing.versionNumber + 1 : 1;
     const effectiveAt = data.effectiveAt || new Date();
 
-    const saved = await this.prisma.processCanonicalValue.upsert({
+    const saved = await client.processCanonicalValue.upsert({
       where: {
         processId_canonicalFieldKey: {
           processId: data.processId,
@@ -168,8 +192,10 @@ export class PrismaCanonicalDictionaryRepository
     sourceDocumentId?: string | null;
     versionNumber: number;
     actorUserId: string;
+    tx?: any;
   }): Promise<ProcessCanonicalHistory> {
-    const created = await this.prisma.processCanonicalHistory.create({
+    const client = data.tx || this.prisma;
+    const created = await client.processCanonicalHistory.create({
       data: {
         processId: data.processId,
         canonicalFieldKey: data.canonicalFieldKey,
@@ -231,14 +257,51 @@ export class PrismaCanonicalDictionaryRepository
     }));
   }
 
+  async listObservations(
+    processId: string,
+    canonicalFieldKey: string,
+    contextFilter?: string,
+  ): Promise<ProcessCanonicalHistory[]> {
+    const where: Prisma.ProcessCanonicalHistoryWhereInput = {
+      processId,
+      canonicalFieldKey,
+    };
+    if (contextFilter) {
+      where.sampleContext = contextFilter;
+    }
+    const entries = await this.prisma.processCanonicalHistory.findMany({
+      where,
+      orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
+    });
+
+    return entries.map((h) => ({
+      id: h.id,
+      processId: h.processId,
+      canonicalFieldKey: h.canonicalFieldKey,
+      value: h.value,
+      unit: h.unit,
+      effectiveAt: h.effectiveAt,
+      sampleContext: h.sampleContext,
+      sourceKind: h.sourceKind as CanonicalSourceKind,
+      sourceInstanceId: h.sourceInstanceId,
+      sourceRevisionId: h.sourceRevisionId,
+      sourceDocumentId: h.sourceDocumentId,
+      versionNumber: h.versionNumber,
+      createdById: h.createdById,
+      createdAt: h.createdAt,
+    }));
+  }
+
   async updateConflictStatus(
     processId: string,
     canonicalFieldKey: string,
     status: "NONE" | "CONFLICT_DETECTED" | "RESOLVED",
     details?: Record<string, unknown> | null,
     actorUserId?: string,
+    tx?: any,
   ): Promise<ProcessCanonicalValue> {
-    const updated = await this.prisma.processCanonicalValue.update({
+    const client = tx || this.prisma;
+    const updated = await client.processCanonicalValue.update({
       where: {
         processId_canonicalFieldKey: {
           processId,

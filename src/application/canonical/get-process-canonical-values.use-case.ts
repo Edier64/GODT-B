@@ -59,6 +59,16 @@ export class GetProcessCanonicalValuesUseCase {
     return this.repository.listHistory(processId, fieldKey);
   }
 
+  async getObservations(
+    processId: string,
+    fieldKey: string,
+    user: AuthenticatedUser,
+    contextFilter?: string,
+  ): Promise<ProcessCanonicalHistory[]> {
+    await this.verifyProcessAccess(processId, user);
+    return this.repository.listObservations(processId, fieldKey, contextFilter);
+  }
+
   async getConflicts(
     processId: string,
     user: AuthenticatedUser,
