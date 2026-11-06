@@ -11,6 +11,7 @@ import { DocumentEngineModule } from "./presentation/document-engine/document-en
 import { DonationProcessModule } from "./presentation/processes/donation-process.module";
 import { ProcessPackageModule } from "./presentation/packages/process-package.module";
 import { CanonicalDictionaryModule } from "./presentation/canonical/canonical-dictionary.module";
+import { DocumentLifecycleModule } from "./presentation/document-lifecycle/document-lifecycle.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CanonicalDictionaryModule } from "./presentation/canonical/canonical-di
     DonationProcessModule,
     ProcessPackageModule,
     CanonicalDictionaryModule,
+    DocumentLifecycleModule,
   ],
 })
 export class AppModule {}

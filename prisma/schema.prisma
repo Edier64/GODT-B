@@ -138,6 +138,8 @@ model SystemUser {
   canonicalFieldsCreated CanonicalFieldDefinition[] @relation("CanonicalFieldCreator")
   canonicalValuesUpdated ProcessCanonicalValue[]  @relation("CanonicalValueUpdater")
   canonicalHistoryCreated ProcessCanonicalHistory[] @relation("CanonicalHistoryCreator")
+  signaturesRegistered  DocumentSignature[]       @relation("SignatureRegistrar")
+  custodyEventsRecorded CustodyEvent[]            @relation("CustodyEventRecorder")
 
   @@map("SYSTEM_USER")
 }
@@ -381,22 +383,28 @@ model TemplateVersion {
 model GeneratedPdfDocument {
   id                   String          @id @default(uuid()) @db.Uuid
   donorId              String          @map("donor_id") @db.Uuid
+  processId            String?         @map("process_id") @db.Uuid
   templateVersionId    String          @map("template_version_id") @db.Uuid
   documentCode         String          @map("document_code") @db.VarChar(100)
+  versionNumber        Int             @default(1) @map("version_number")
+  status               String          @default("GENERATED") @db.VarChar(50)
   objectStorageKey     String          @map("object_storage_key") @db.VarChar(500)
   sha256Hash           String          @map("sha256_hash") @db.Char(64)
   anonymizationApplied Boolean         @default(false) @map("anonymization_applied")
   dataSnapshot         Json            @map("data_snapshot")
   generatedById        String          @map("generated_by") @db.Uuid
   approvedById         String?         @map("approved_by") @db.Uuid
-  documentInstanceId  String?         @map("document_instance_id") @db.Uuid
+  documentInstanceId   String?         @map("document_instance_id") @db.Uuid
   donor                DonorRecord     @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process              DonationProcess? @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   templateVersion      TemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   generatedBy          SystemUser      @relation("DocumentGenerator", fields: [generatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   approvedBy           SystemUser?     @relation("DocumentApprover", fields: [approvedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   documentInstance     DocumentInstance? @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  signatures           DocumentSignature[]
 
   @@index([donorId])
+  @@index([processId])
   @@index([templateVersionId])
   @@index([documentInstanceId])
   @@map("GENERATED_PDF_DOCUMENT")
@@ -429,6 +437,9 @@ model DocumentInstance {
   revisions         DocumentResponseRevision[] @relation("InstanceRevisions")
   generatedPdfs     GeneratedPdfDocument[]
   currentOfProcessDocument ProcessDocument?    @relation("CurrentProcessDocumentInstance")
+  documentParticipants DocumentParticipant[]
+  signatures        DocumentSignature[]
+  custodyEvents     CustodyEvent[]
 
   @@index([donorId, status, updatedAt])
   @@index([processId])
@@ -534,6 +545,8 @@ model DonationProcess {
   tissueProcedures TissueRecoveryProcedure[]
   canonicalValues ProcessCanonicalValue[]
   canonicalHistory ProcessCanonicalHistory[]
+  generatedPdfDocuments GeneratedPdfDocument[]
+  custodyEvents   CustodyEvent[]
 
   @@index([status])
   @@index([donorId])
@@ -577,6 +590,7 @@ model ProcessParticipant {
 
   process             DonationProcess        @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   systemUser          SystemUser?            @relation("ParticipantSystemUser", fields: [systemUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documentParticipants DocumentParticipant[]
 
   @@index([processId, role])
   @@index([documentNumber])
@@ -735,5 +749,86 @@ model ProcessCanonicalHistory {
   @@index([processId, canonicalFieldKey, effectiveAt])
   @@index([processId, canonicalFieldKey, versionNumber])
   @@map("PROCESS_CANONICAL_HISTORY")
+}
+
+model DocumentParticipant {
+  id                   String              @id @default(uuid()) @db.Uuid
+  documentInstanceId   String              @map("document_instance_id") @db.Uuid
+  processParticipantId String?             @map("process_participant_id") @db.Uuid
+  fullName             String              @map("full_name") @db.VarChar(200)
+  documentType         String?             @map("document_type") @db.VarChar(20)
+  documentNumber       String?             @map("document_number") @db.VarChar(100)
+  signerRole           String              @map("signer_role") @db.VarChar(100)
+  isSigner             Boolean             @default(false) @map("is_signer")
+  signatureRequired    Boolean             @default(false) @map("signature_required")
+  signatureOrder       Int?                @map("signature_order")
+  status               String              @default("ASIGNADO") @db.VarChar(50)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  documentInstance     DocumentInstance    @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  processParticipant   ProcessParticipant? @relation(fields: [processParticipantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  signatures           DocumentSignature[]
+
+  @@index([documentInstanceId])
+  @@index([processParticipantId])
+  @@map("DOCUMENT_PARTICIPANT")
+}
+
+model DocumentSignature {
+  id                  String               @id @default(uuid()) @db.Uuid
+  documentInstanceId  String               @map("document_instance_id") @db.Uuid
+  generatedPdfId      String               @map("generated_pdf_id") @db.Uuid
+  participantId       String               @map("participant_id") @db.Uuid
+  signatureType       String               @map("signature_type") @db.VarChar(50)
+  snapshotHash        String               @map("snapshot_hash") @db.Char(64)
+  signedAt            DateTime             @default(now()) @map("signed_at") @db.Timestamptz(6)
+  evidenceData        Json?                @map("evidence_data")
+  authenticatedUserId String?              @map("authenticated_user_id") @db.Uuid
+  status              String               @default("VALIDA") @db.VarChar(50)
+  revokedReason       String?              @map("revoked_reason") @db.Text
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  documentInstance    DocumentInstance     @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  generatedPdf        GeneratedPdfDocument @relation(fields: [generatedPdfId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  participant         DocumentParticipant  @relation(fields: [participantId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  authenticatedUser   SystemUser?          @relation("SignatureRegistrar", fields: [authenticatedUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([documentInstanceId])
+  @@index([generatedPdfId])
+  @@index([participantId])
+  @@map("DOCUMENT_SIGNATURE")
+}
+
+model CustodyEvent {
+  id                    String           @id @default(uuid()) @db.Uuid
+  documentInstanceId    String           @map("document_instance_id") @db.Uuid
+  processId             String           @map("process_id") @db.Uuid
+  sequenceNumber        Int              @map("sequence_number")
+  eventType             String           @map("event_type") @db.VarChar(50)
+  itemDescription       String           @map("item_description") @db.VarChar(255)
+  containerCode         String?          @map("container_code") @db.VarChar(100)
+  sealNumber            String?          @map("seal_number") @db.VarChar(100)
+  temperatureCelsius    Decimal?         @map("temperature_celsius") @db.Decimal(5, 2)
+  transferorName        String           @map("transferor_name") @db.VarChar(200)
+  transferorId          String?          @map("transferor_id") @db.VarChar(100)
+  transferorInstitution String?          @map("transferor_institution") @db.VarChar(200)
+  receiverName          String           @map("receiver_name") @db.VarChar(200)
+  receiverId            String?          @map("receiver_id") @db.VarChar(100)
+  receiverInstitution   String?          @map("receiver_institution") @db.VarChar(200)
+  occurredAt            DateTime         @map("occurred_at") @db.Timestamptz(6)
+  location              String           @db.VarChar(200)
+  integrityVerified     Boolean          @default(true) @map("integrity_verified")
+  observations          String?          @db.Text
+  recordedById          String           @map("recorded_by_id") @db.Uuid
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  documentInstance      DocumentInstance @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process               DonationProcess  @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  recordedBy            SystemUser       @relation("CustodyEventRecorder", fields: [recordedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([documentInstanceId, sequenceNumber])
+  @@index([processId, sequenceNumber])
+  @@map("CUSTODY_EVENT")
 }
 
