@@ -8,6 +8,9 @@ import { LegalizationModule } from "./presentation/legalization/legalization.mod
 import { DocumentsModule } from "./presentation/documents/documents.module";
 import { OcrModule } from "./presentation/ocr/ocr.module";
 import { DocumentEngineModule } from "./presentation/document-engine/document-engine.module";
+import { DonationProcessModule } from "./presentation/processes/donation-process.module";
+import { ProcessPackageModule } from "./presentation/packages/process-package.module";
+import { CanonicalDictionaryModule } from "./presentation/canonical/canonical-dictionary.module";
 
 @Module({
   imports: [
@@ -20,6 +23,9 @@ import { DocumentEngineModule } from "./presentation/document-engine/document-en
     DocumentsModule,
     OcrModule,
     DocumentEngineModule,
+    DonationProcessModule,
+    ProcessPackageModule,
+    CanonicalDictionaryModule,
   ],
 })
 export class AppModule {}

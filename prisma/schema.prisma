@@ -64,6 +64,43 @@ enum TissueCategory {
   @@map("tissue_category")
 }
 
+enum DonationProcessStatus {
+  EN_VALORACION
+  EN_CURSO
+  COMPLETADO
+  CANCELADO
+  SUSPENDIDO
+
+  @@map("donation_process_status")
+}
+
+enum ProcessInstitutionRole {
+  IPS_GENERADORA
+  IPS_EXTRACTORA
+  BANCO_TEJIDOS
+  IPS_TRASPLANTADORA
+  INMLCF
+  COORDINACION_REGIONAL
+  OTRO
+
+  @@map("process_institution_role")
+}
+
+enum ProcessParticipantRole {
+  COORDINADOR_OPERATIVO
+  MEDICO_CERTIFICADOR
+  MEDICO_TRATANTE
+  CIRUJANO_RESCATE
+  TECNICO_TEJIDOS
+  DEUDO_NOTIFICADO
+  REPRESENTANTE_LEGAL
+  TESTIGO
+  CUSTODIO
+  OTRO
+
+  @@map("process_participant_role")
+}
+
 model SystemUser {
   id                    String                    @id @default(uuid()) @db.Uuid
   email                 String                    @unique @db.VarChar(320)
@@ -92,6 +129,15 @@ model SystemUser {
   provenanceValidated   DocumentFieldProvenance[] @relation("ProvenanceValidator")
   conflictsResolved     DocumentFieldProvenance[] @relation("ConflictResolver")
   auditEvents           AuditEvent[]              @relation("AuditActor")
+  processesOpened       DonationProcess[]         @relation("ProcessOpenedBy")
+  processesClosed       DonationProcess[]         @relation("ProcessClosedBy")
+  processParticipants   ProcessParticipant[]      @relation("ParticipantSystemUser")
+  packagesCreated       ProcessPackage[]          @relation("PackageCreator")
+  packageVersionsCreated ProcessPackageVersion[]  @relation("PackageVersionCreator")
+  packageVersionsAuth   ProcessPackageVersion[]   @relation("PackageVersionAuthorizer")
+  canonicalFieldsCreated CanonicalFieldDefinition[] @relation("CanonicalFieldCreator")
+  canonicalValuesUpdated ProcessCanonicalValue[]  @relation("CanonicalValueUpdater")
+  canonicalHistoryCreated ProcessCanonicalHistory[] @relation("CanonicalHistoryCreator")
 
   @@map("SYSTEM_USER")
 }
@@ -120,6 +166,7 @@ model DonorRecord {
   tissueProcedures        TissueRecoveryProcedure[]
   generatedDocuments      GeneratedPdfDocument[]
   documentInstances       DocumentInstance[]
+  donationProcesses       DonationProcess[]
 
   @@index([status])
   @@index([documentNumber])
@@ -189,13 +236,16 @@ model SourceDocument {
   sha256Hash       String              @map("sha256_hash") @db.Char(64)
   status           String              @db.VarChar(50)
   uploadedAt       DateTime            @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  processId        String?             @map("process_id") @db.Uuid
   donor            DonorRecord         @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process          DonationProcess?    @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   uploadedBy       SystemUser          @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   ocrJobs          OcrProcessingJob[]
   ocrFields        OcrExtractedField[]
   fieldProvenance  DocumentFieldProvenance[]
 
   @@index([donorId, uploadedAt])
+  @@index([processId])
   @@index([sha256Hash])
   @@unique([donorId, sha256Hash])
   @@map("SOURCE_DOCUMENT")
@@ -254,10 +304,13 @@ model OrganRecoverySurgery {
   organsRecovered      Json?       @map("organs_recovered")
   preservationSolution Json?       @map("preservation_solution")
   surgicalTeam         Json?       @map("surgical_team")
+  processId            String?     @map("process_id") @db.Uuid
   donor                DonorRecord @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process              DonationProcess? @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   leadSurgeon          SystemUser  @relation("LeadSurgeonSurgery", fields: [leadSurgeonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([donorId, procedureStartedAt])
+  @@index([processId])
   @@map("ORGAN_RECOVERY_SURGERY")
 }
 
@@ -270,11 +323,14 @@ model TissueRecoveryProcedure {
   checklistData       Json?          @map("checklist_data")
   recoveredComponents Json?          @map("recovered_components")
   forensicEvidence    Json?          @map("forensic_evidence")
+  processId           String?        @map("process_id") @db.Uuid
   donor               DonorRecord    @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process             DonationProcess? @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   technician          SystemUser     @relation("TissueTechnician", fields: [technicianId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   leadSurgeon         SystemUser     @relation("TissueSurgeon", fields: [leadSurgeonId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([donorId, tissueCategory])
+  @@index([processId])
   @@map("TISSUE_RECOVERY_PROCEDURE")
 }
 
@@ -289,6 +345,7 @@ model DocumentTemplate {
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   versions     TemplateVersion[]
   instances    DocumentInstance[]
+  processDocuments ProcessDocument[]
 
   @@map("DOCUMENT_TEMPLATE")
 }
@@ -314,6 +371,7 @@ model TemplateVersion {
   createdBy      SystemUser             @relation("TemplateVersionCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
   generatedPdfs  GeneratedPdfDocument[]
   instances      DocumentInstance[]
+  processDocuments ProcessDocument[]
 
   @@unique([templateId, versionNumber])
   @@index([status, effectiveFrom])
@@ -358,7 +416,11 @@ model DocumentInstance {
   updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
   completedAt       DateTime?                  @map("completed_at") @db.Timestamptz(6)
   approvedAt        DateTime?                  @map("approved_at") @db.Timestamptz(6)
+  processId         String?                    @map("process_id") @db.Uuid
+  processDocumentId String?                    @map("process_document_id") @db.Uuid
   donor             DonorRecord                @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  process           DonationProcess?           @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  processDocument   ProcessDocument?           @relation("ProcessDocumentInstances", fields: [processDocumentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   template          DocumentTemplate           @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   templateVersion   TemplateVersion            @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   createdBy         SystemUser                 @relation("DocumentInstanceCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -366,8 +428,11 @@ model DocumentInstance {
   currentRevision   DocumentResponseRevision?  @relation("CurrentDocumentRevision", fields: [currentRevisionId, id], references: [id, documentInstanceId], onDelete: Restrict, onUpdate: Cascade)
   revisions         DocumentResponseRevision[] @relation("InstanceRevisions")
   generatedPdfs     GeneratedPdfDocument[]
+  currentOfProcessDocument ProcessDocument?    @relation("CurrentProcessDocumentInstance")
 
   @@index([donorId, status, updatedAt])
+  @@index([processId])
+  @@index([processDocumentId])
   @@index([templateVersionId, status])
   @@unique([currentRevisionId, id])
   @@map("DOCUMENT_INSTANCE")
@@ -397,6 +462,7 @@ model DocumentFieldProvenance {
   id                 String                   @id @default(uuid()) @db.Uuid
   responseRevisionId String                   @map("response_revision_id") @db.Uuid
   fieldPath          String                   @map("field_path") @db.VarChar(300)
+  canonicalFieldKey  String?                  @map("canonical_field_key") @db.VarChar(150)
   sourceKind         String                   @map("source_kind") @db.VarChar(50)
   sourceEntityId     String?                  @map("source_entity_id") @db.Uuid
   sourceDocumentId   String?                  @map("source_document_id") @db.Uuid
@@ -417,6 +483,7 @@ model DocumentFieldProvenance {
   conflictResolvedBy  SystemUser?             @relation("ConflictResolver", fields: [conflictResolvedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([responseRevisionId, fieldPath])
+  @@index([canonicalFieldKey])
   @@index([sourceDocumentId])
   @@index([ocrFieldId])
   @@map("DOCUMENT_FIELD_PROVENANCE")
@@ -438,3 +505,235 @@ model AuditEvent {
   @@index([correlationId])
   @@map("AUDIT_EVENT")
 }
+
+model DonationProcess {
+  id              String                 @id @default(uuid()) @db.Uuid
+  processCode     String                 @unique @map("process_code") @db.VarChar(100)
+  donorId         String                 @map("donor_id") @db.Uuid
+  packageVersionId String?               @map("package_version_id") @db.Uuid
+  status          DonationProcessStatus  @default(EN_VALORACION)
+  primaryIpsName  String                 @map("primary_ips_name") @db.VarChar(200)
+  openedById      String                 @map("opened_by_id") @db.Uuid
+  closedById      String?                @map("closed_by_id") @db.Uuid
+  openedAt        DateTime               @default(now()) @map("opened_at") @db.Timestamptz(6)
+  closedAt        DateTime?              @map("closed_at") @db.Timestamptz(6)
+  notes           String?                @db.Text
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  donor           DonorRecord            @relation(fields: [donorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  packageVersion  ProcessPackageVersion? @relation(fields: [packageVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  openedBy        SystemUser             @relation("ProcessOpenedBy", fields: [openedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  closedBy        SystemUser?            @relation("ProcessClosedBy", fields: [closedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  institutions    ProcessInstitution[]
+  participants    ProcessParticipant[]
+  documents       ProcessDocument[]
+  documentInstances DocumentInstance[]
+  sourceDocuments SourceDocument[]
+  organSurgeries  OrganRecoverySurgery[]
+  tissueProcedures TissueRecoveryProcedure[]
+  canonicalValues ProcessCanonicalValue[]
+  canonicalHistory ProcessCanonicalHistory[]
+
+  @@index([status])
+  @@index([donorId])
+  @@index([primaryIpsName])
+  @@index([packageVersionId])
+  @@map("DONATION_PROCESS")
+}
+
+model ProcessInstitution {
+  id              String                 @id @default(uuid()) @db.Uuid
+  processId       String                 @map("process_id") @db.Uuid
+  institutionName String                 @map("institution_name") @db.VarChar(200)
+  role            ProcessInstitutionRole
+  notes           String?                @db.Text
+  assignedAt      DateTime               @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  process         DonationProcess        @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([processId, role])
+  @@map("PROCESS_INSTITUTION")
+}
+
+model ProcessParticipant {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  processId           String                 @map("process_id") @db.Uuid
+  fullName            String                 @map("full_name") @db.VarChar(200)
+  documentType        String?                @map("document_type") @db.VarChar(20)
+  documentNumber      String?                @map("document_number") @db.VarChar(100)
+  role                ProcessParticipantRole
+  professionalId      String?                @map("professional_id") @db.VarChar(100)
+  institution         String?                @db.VarChar(200)
+  relationshipToDonor String?                @map("relationship_to_donor") @db.VarChar(100)
+  phone               String?                @db.VarChar(50)
+  email               String?                @db.VarChar(320)
+  notes               String?                @db.Text
+  systemUserId        String?                @map("system_user_id") @db.Uuid
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  process             DonationProcess        @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  systemUser          SystemUser?            @relation("ParticipantSystemUser", fields: [systemUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([processId, role])
+  @@index([documentNumber])
+  @@map("PROCESS_PARTICIPANT")
+}
+
+model ProcessPackage {
+  id           String                  @id @default(uuid()) @db.Uuid
+  code         String                  @unique @db.VarChar(100)
+  name         String                  @db.VarChar(200)
+  description  String?                 @db.Text
+  isActive     Boolean                 @default(true) @map("is_active")
+  createdById  String                  @map("created_by_id") @db.Uuid
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  createdBy    SystemUser              @relation("PackageCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  versions     ProcessPackageVersion[]
+
+  @@map("PROCESS_PACKAGE")
+}
+
+model ProcessPackageVersion {
+  id               String            @id @default(uuid()) @db.Uuid
+  packageId        String            @map("package_id") @db.Uuid
+  versionNumber    String            @map("version_number") @db.VarChar(50)
+  status           String            @default("DRAFT") @db.VarChar(50)
+  effectiveFrom    DateTime          @default(now()) @map("effective_from") @db.Timestamptz(6)
+  effectiveTo      DateTime?         @map("effective_to") @db.Timestamptz(6)
+  description      String?           @db.Text
+  definitionHash   String?           @map("definition_hash") @db.Char(64)
+  positionsConfig  Json              @map("positions_config")
+  createdById      String            @map("created_by_id") @db.Uuid
+  authorizedById   String?           @map("authorized_by_id") @db.Uuid
+  publishedAt      DateTime?         @map("published_at") @db.Timestamptz(6)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  package          ProcessPackage    @relation(fields: [packageId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy        SystemUser        @relation("PackageVersionCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  authorizedBy     SystemUser?       @relation("PackageVersionAuthorizer", fields: [authorizedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  donationProcesses DonationProcess[]
+
+  @@unique([packageId, versionNumber])
+  @@index([packageId, status])
+  @@map("PROCESS_PACKAGE_VERSION")
+}
+
+model ProcessDocument {
+  id                     String            @id @default(uuid()) @db.Uuid
+  processId              String            @map("process_id") @db.Uuid
+  positionNumber         Int               @map("position_number")
+  documentCode           String            @map("document_code") @db.VarChar(100)
+  title                  String            @db.VarChar(255)
+  category               String            @db.VarChar(100)
+  status                 String            @default("PENDIENTE") @db.VarChar(50)
+  applicabilityStatus    String            @default("APLICABLE") @map("applicability_status") @db.VarChar(50)
+  nonApplicabilityReason String?           @map("non_applicability_reason") @db.Text
+  isMandatory            Boolean           @default(true) @map("is_mandatory")
+  orderIndex             Int               @map("order_index")
+  rules                  Json?
+  templateId             String?           @map("template_id") @db.Uuid
+  templateVersionId      String?           @map("template_version_id") @db.Uuid
+  currentInstanceId      String?           @unique @map("current_instance_id") @db.Uuid
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  process                DonationProcess   @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  template               DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  templateVersion        TemplateVersion?  @relation(fields: [templateVersionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currentInstance        DocumentInstance? @relation("CurrentProcessDocumentInstance", fields: [currentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  instances              DocumentInstance[] @relation("ProcessDocumentInstances")
+
+  @@unique([processId, positionNumber])
+  @@unique([processId, documentCode])
+  @@index([processId, status])
+  @@index([processId, applicabilityStatus])
+  @@map("PROCESS_DOCUMENT")
+}
+
+model CanonicalFieldDefinition {
+  id                String                    @id @default(uuid()) @db.Uuid
+  canonicalFieldKey String                    @unique @map("canonical_field_key") @db.VarChar(150)
+  displayName       String                    @map("display_name") @db.VarChar(200)
+  description       String?                   @db.Text
+  dataType          String                    @map("data_type") @db.VarChar(50)
+  unit              String?                   @db.VarChar(50)
+  scope             String                    @db.VarChar(50)
+  cardinality       String                    @default("SINGLE") @db.VarChar(50)
+  sharingPolicy     String                    @default("SHARED") @map("sharing_policy") @db.VarChar(50)
+  allowedSources    Json                      @map("allowed_sources")
+  writable          Boolean                   @default(true)
+  validationRules   Json?                     @map("validation_rules")
+  status            String                    @default("ACTIVE") @db.VarChar(50)
+  version           Int                       @default(1)
+  createdById       String?                   @map("created_by_id") @db.Uuid
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  processValues     ProcessCanonicalValue[]
+  historyEntries    ProcessCanonicalHistory[]
+  createdBy         SystemUser?               @relation("CanonicalFieldCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([scope, status])
+  @@index([canonicalFieldKey])
+  @@map("CANONICAL_FIELD_DEFINITION")
+}
+
+model ProcessCanonicalValue {
+  id                String                    @id @default(uuid()) @db.Uuid
+  processId         String                    @map("process_id") @db.Uuid
+  canonicalFieldKey String                    @map("canonical_field_key") @db.VarChar(150)
+  currentValue      Json                      @map("current_value")
+  unit              String?                   @db.VarChar(50)
+  effectiveAt       DateTime                  @default(now()) @map("effective_at") @db.Timestamptz(6)
+  sampleContext     String?                   @map("sample_context") @db.VarChar(200)
+  sourceKind        String                    @map("source_kind") @db.VarChar(50)
+  sourceInstanceId  String?                   @map("source_instance_id") @db.Uuid
+  sourceRevisionId  String?                   @map("source_revision_id") @db.Uuid
+  versionNumber     Int                       @default(1) @map("version_number")
+  conflictStatus    String                    @default("NONE") @map("conflict_status") @db.VarChar(50)
+  conflictDetails   Json?                     @map("conflict_details")
+  updatedById       String                    @map("updated_by_id") @db.Uuid
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  process           DonationProcess           @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  canonicalField    CanonicalFieldDefinition  @relation(fields: [canonicalFieldKey], references: [canonicalFieldKey], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy         SystemUser                @relation("CanonicalValueUpdater", fields: [updatedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([processId, canonicalFieldKey])
+  @@index([processId, conflictStatus])
+  @@map("PROCESS_CANONICAL_VALUE")
+}
+
+model ProcessCanonicalHistory {
+  id                String                    @id @default(uuid()) @db.Uuid
+  processId         String                    @map("process_id") @db.Uuid
+  canonicalFieldKey String                    @map("canonical_field_key") @db.VarChar(150)
+  value             Json
+  unit              String?                   @db.VarChar(50)
+  effectiveAt       DateTime                  @default(now()) @map("effective_at") @db.Timestamptz(6)
+  sampleContext     String?                   @map("sample_context") @db.VarChar(200)
+  sourceKind        String                    @map("source_kind") @db.VarChar(50)
+  sourceInstanceId  String?                   @map("source_instance_id") @db.Uuid
+  sourceRevisionId  String?                   @map("source_revision_id") @db.Uuid
+  sourceDocumentId  String?                   @map("source_document_id") @db.Uuid
+  versionNumber     Int                       @map("version_number")
+  createdById       String                    @map("created_by_id") @db.Uuid
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  process           DonationProcess           @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  canonicalField    CanonicalFieldDefinition  @relation(fields: [canonicalFieldKey], references: [canonicalFieldKey], onDelete: Restrict, onUpdate: Cascade)
+  createdBy         SystemUser                @relation("CanonicalHistoryCreator", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([processId, canonicalFieldKey, effectiveAt])
+  @@index([processId, canonicalFieldKey, versionNumber])
+  @@map("PROCESS_CANONICAL_HISTORY")
+}
+

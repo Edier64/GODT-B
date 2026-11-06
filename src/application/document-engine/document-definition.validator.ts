@@ -226,9 +226,32 @@ export class DocumentDefinitionValidator {
     if (!Array.isArray(value)) {
       throw new DocumentEngineValidationError("mappingConfig must be an array");
     }
+    const validScopes = new Set(["DONOR", "PROCESS", "DOCUMENT"]);
+    const validPolicies = new Set(["SHARED", "COPY_ONCE", "LOCAL", "READONLY_DERIVED"]);
+
     for (const mapping of value) {
+      if (!this.isRecord(mapping)) {
+        throw new DocumentEngineValidationError("Each mapping must be an object");
+      }
+
+      // Soporte Fase C: CanonicalFieldMapping
+      if (typeof mapping.canonicalFieldKey === "string") {
+        if (typeof mapping.schemaPath !== "string" || !mapping.schemaPath.trim()) {
+          throw new DocumentEngineValidationError(
+            "Each canonical mapping requires schemaPath",
+          );
+        }
+        if (mapping.scope !== undefined && !validScopes.has(mapping.scope as string)) {
+          throw new DocumentEngineValidationError(`Invalid scope in mapping '${mapping.canonicalFieldKey}'`);
+        }
+        if (mapping.bindingPolicy !== undefined && !validPolicies.has(mapping.bindingPolicy as string)) {
+          throw new DocumentEngineValidationError(`Invalid bindingPolicy in mapping '${mapping.canonicalFieldKey}'`);
+        }
+        continue;
+      }
+
+      // Soporte Legado: CanonicalMappingDefinition
       if (
-        !this.isRecord(mapping) ||
         typeof mapping.targetKey !== "string" ||
         typeof mapping.sourcePath !== "string" ||
         typeof mapping.sourceKind !== "string" ||
