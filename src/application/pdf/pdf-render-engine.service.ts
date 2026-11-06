@@ -15,6 +15,7 @@ export interface PdfRenderInput {
     templateVersion: string;
     generatedAt: Date;
     generatedByName: string;
+    snapshotDigest?: string;
     signatures?: Array<{
       signerRole: string;
       fullName: string;
@@ -192,13 +193,14 @@ export class PdfRenderEngineService {
     regular: PDFFont,
     bold: PDFFont,
   ): Promise<void> {
-    const page = pdfDoc.addPage([612, 792]);
-    let y = 750;
+    // Formato oficial apaisado / landscape según anexo-8-formato-cadena-de-custodia.pdf original
+    const page = pdfDoc.addPage([792, 612]);
+    let y = 570;
 
-    y = this.drawOfficialHeader(page, "ANEXO 8: ACTA Y REGISTRO DE CADENA DE CUSTODIA DE COMPONENTES", bold, regular, y);
+    y = this.drawOfficialHeader(page, "ANEXO 8: ACTA Y REGISTRO DE CADENA DE CUSTODIA DE COMPONENTES ANATÓMICOS", bold, regular, y);
     y = this.drawExpedienteBox(page, input.metadata, bold, regular, y);
 
-    y = this.drawSectionHeader(page, "1. IDENTIFICACIÓN DEL COMPONENTE ANATÓMICO BAJO CUSTODIA", bold, y);
+    y = this.drawSectionHeader(page, "1. IDENTIFICACIÓN DEL COMPONENTE ANATÓMICO BAJO CUSTODIA Y CADENA DE FRÍO", bold, y);
     const d = input.data as any;
     const itemInfo = [
       ["Componente / Órgano:", d.componente || "Tejido Ocular / Corneas (Par)"],
@@ -209,8 +211,8 @@ export class PdfRenderEngineService {
     y = this.drawTwoColumnGrid(page, itemInfo, regular, bold, y);
 
     // Registro Cronológico de Eventos de Custodia
-    y = this.drawSectionHeader(page, "2. SECUENCIA CRONOLÓGICA INMUTABLE DE CUSTODIA", bold, y);
-    const custodyHeaders = ["#", "Fecha/Hora", "Evento", "Entregó", "Recibió", "Temp", "Integridad"];
+    y = this.drawSectionHeader(page, "2. SECUENCIA CRONOLÓGICA INMUTABLE DE CUSTODIA (LIBRO MAYOR DE TRANSPORTE)", bold, y);
+    const custodyHeaders = ["#", "Fecha/Hora", "Evento", "Componente", "Sello / Contenedor", "Temp", "Entregó", "Recibió", "Integridad"];
     const events = input.metadata.custodyEvents && input.metadata.custodyEvents.length > 0
       ? input.metadata.custodyEvents
       : [
@@ -218,28 +220,40 @@ export class PdfRenderEngineService {
             sequenceNumber: 1,
             occurredAt: "2026-11-06T15:30:00Z",
             eventType: "RECOLECCION",
+            itemDescription: "Córneas en medio MK",
+            sealNumber: "SEAL-01",
+            containerCode: "CONT-01",
             transferorName: "Dr. Cirujano Rescate",
             receiverName: "Tec. Banco Tejidos",
             temperatureCelsius: 4.2,
             integrityVerified: true,
+            location: "Quirófano 1 - IPS Primaria",
           },
           {
             sequenceNumber: 2,
             occurredAt: "2026-11-06T17:00:00Z",
             eventType: "TRANSPORTE",
+            itemDescription: "Córneas en medio MK",
+            sealNumber: "SEAL-01",
+            containerCode: "CONT-01",
             transferorName: "Tec. Banco Tejidos",
             receiverName: "Custodio Transporte Regional",
             temperatureCelsius: 3.8,
             integrityVerified: true,
+            location: "Vehículo Refrigerado Móvil",
           },
           {
             sequenceNumber: 3,
             occurredAt: "2026-11-06T18:15:00Z",
             eventType: "RECEPCION",
+            itemDescription: "Córneas en medio MK",
+            sealNumber: "SEAL-01",
+            containerCode: "CONT-01",
             transferorName: "Custodio Transporte Regional",
             receiverName: "Coordinador Banco de Tejidos",
             temperatureCelsius: 4.0,
             integrityVerified: true,
+            location: "Recepción Banco Tejidos Regional 3",
           },
         ];
 
@@ -247,13 +261,16 @@ export class PdfRenderEngineService {
       String(e.sequenceNumber),
       typeof e.occurredAt === "string" ? e.occurredAt.substring(11, 16) : "15:30",
       e.eventType,
+      (e.itemDescription || "Tejido").substring(0, 18),
+      (e.sealNumber || e.containerCode || "—").substring(0, 14),
+      e.temperatureCelsius !== null && e.temperatureCelsius !== undefined ? `${e.temperatureCelsius}°C` : "N/A",
       e.transferorName.substring(0, 18),
       e.receiverName.substring(0, 18),
-      `${e.temperatureCelsius ?? 4}°C`,
-      e.integrityVerified ? "CONFORME" : "ALTERADO",
+      e.integrityVerified ? "VERIFICADO" : "PENDIENTE",
     ]);
 
-    y = this.drawTable(page, custodyHeaders, custodyRows, [25, 65, 80, 120, 120, 45, 77], bold, regular, y);
+    // Ancho total 712 pt adaptado a página apaisada 792 pt
+    y = this.drawTable(page, custodyHeaders, custodyRows, [25, 60, 75, 110, 95, 45, 115, 115, 72], bold, regular, y);
 
     // Firmas
     y = Math.min(y, 140);
@@ -337,6 +354,7 @@ export class PdfRenderEngineService {
     regular: PDFFont,
     y: number,
   ): number {
+    const contentWidth = page.getWidth() - 80;
     page.drawText("REPÚBLICA DE COLOMBIA — MINISTERIO DE SALUD Y PROTECCIÓN SOCIAL", {
       x: 40,
       y,
@@ -358,11 +376,11 @@ export class PdfRenderEngineService {
     page.drawRectangle({
       x: 40,
       y: y - 20,
-      width: 532,
+      width: contentWidth,
       height: 24,
       color: rgb(0.07, 0.19, 0.28), // Navy GODT (#123047)
     });
-    page.drawText(title.toUpperCase().substring(0, 80), {
+    page.drawText(title.toUpperCase().substring(0, 95), {
       x: 48,
       y: y - 14,
       size: 9.5,
@@ -379,10 +397,11 @@ export class PdfRenderEngineService {
     regular: PDFFont,
     y: number,
   ): number {
+    const contentWidth = page.getWidth() - 80;
     page.drawRectangle({
       x: 40,
       y: y - 40,
-      width: 532,
+      width: contentWidth,
       height: 40,
       color: rgb(0.96, 0.97, 0.98),
       borderColor: rgb(0.82, 0.86, 0.9),
@@ -390,8 +409,8 @@ export class PdfRenderEngineService {
     });
 
     const col1X = 48;
-    const col2X = 220;
-    const col3X = 400;
+    const col2X = 40 + contentWidth * 0.35;
+    const col3X = 40 + contentWidth * 0.70;
     const row1Y = y - 16;
     const row2Y = y - 32;
 
@@ -417,10 +436,11 @@ export class PdfRenderEngineService {
   }
 
   private drawSectionHeader(page: PDFPage, title: string, bold: PDFFont, y: number): number {
+    const contentWidth = page.getWidth() - 80;
     page.drawRectangle({
       x: 40,
       y: y - 14,
-      width: 532,
+      width: contentWidth,
       height: 16,
       color: rgb(0.91, 0.94, 0.96),
     });
@@ -529,7 +549,8 @@ export class PdfRenderEngineService {
     regular: PDFFont,
     y: number,
   ): void {
-    const boxWidth = 250;
+    const contentWidth = page.getWidth() - 80;
+    const boxWidth = (contentWidth - 16) / 2;
     const boxHeight = 70;
 
     // Caja 1: Coordinador Operativo / Responsable
@@ -552,7 +573,10 @@ export class PdfRenderEngineService {
 
     const sig1 = signatures?.[0];
     if (sig1 && sig1.status === "FIRMADO") {
-      page.drawText(`✓ FIRMADO DIGITALMENTE (${sig1.signatureType})`, {
+      const sigLabel = sig1.signatureType === "DIGITAL_CERTIFICADA"
+        ? "✓ FIRMA DIGITAL CERTIFICADA"
+        : `✓ ATESTACIÓN REGISTRADA (${sig1.signatureType})`;
+      page.drawText(sigLabel, {
         x: 46,
         y: y + 36,
         size: 8,
@@ -569,16 +593,17 @@ export class PdfRenderEngineService {
     } else {
       page.drawLine({
         start: { x: 50, y: y + 25 },
-        end: { x: 280, y: y + 25 },
+        end: { x: 40 + boxWidth - 10, y: y + 25 },
         color: rgb(0.5, 0.5, 0.5),
         thickness: 0.8,
       });
-      page.drawText("Firma, Sello y Registro Médico", { x: 95, y: y + 12, size: 7.5, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText("Firma, Sello y Registro Médico", { x: 46 + (boxWidth - 140) / 2, y: y + 12, size: 7.5, font: regular, color: rgb(0.4, 0.4, 0.4) });
     }
 
     // Caja 2: Testigo / Cirujano / Custodio
+    const box2X = 40 + boxWidth + 16;
     page.drawRectangle({
-      x: 322,
+      x: box2X,
       y,
       width: boxWidth,
       height: boxHeight,
@@ -587,7 +612,7 @@ export class PdfRenderEngineService {
       color: rgb(0.98, 0.99, 1),
     });
     page.drawText("TESTIGO / PROFESIONAL ACOMPAÑANTE / CUSTODIO", {
-      x: 328,
+      x: box2X + 6,
       y: y + boxHeight - 12,
       size: 7,
       font: bold,
@@ -596,28 +621,31 @@ export class PdfRenderEngineService {
 
     const sig2 = signatures?.[1];
     if (sig2 && sig2.status === "FIRMADO") {
-      page.drawText(`✓ FIRMADO DIGITALMENTE (${sig2.signatureType})`, {
-        x: 328,
+      const sigLabel2 = sig2.signatureType === "DIGITAL_CERTIFICADA"
+        ? "✓ FIRMA DIGITAL CERTIFICADA"
+        : `✓ ATESTACIÓN REGISTRADA (${sig2.signatureType})`;
+      page.drawText(sigLabel2, {
+        x: box2X + 6,
         y: y + 36,
         size: 8,
         font: bold,
         color: rgb(0.08, 0.45, 0.35),
       });
-      page.drawText(`Firmante: ${sig2.fullName}`, { x: 328, y: y + 24, size: 7.5, font: regular });
+      page.drawText(`Firmante: ${sig2.fullName}`, { x: box2X + 6, y: y + 24, size: 7.5, font: regular });
       page.drawText(`Fecha/Hora: ${sig2.signedAt ? new Date(sig2.signedAt).toISOString() : new Date().toISOString()}`, {
-        x: 328,
+        x: box2X + 6,
         y: y + 12,
         size: 7,
         font: regular,
       });
     } else {
       page.drawLine({
-        start: { x: 332, y: y + 25 },
-        end: { x: 562, y: y + 25 },
+        start: { x: box2X + 10, y: y + 25 },
+        end: { x: box2X + boxWidth - 10, y: y + 25 },
         color: rgb(0.5, 0.5, 0.5),
         thickness: 0.8,
       });
-      page.drawText("Firma y Documento de Identificación", { x: 375, y: y + 12, size: 7.5, font: regular, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText("Firma y Documento de Identificación", { x: box2X + (boxWidth - 160) / 2, y: y + 12, size: 7.5, font: regular, color: rgb(0.4, 0.4, 0.4) });
     }
   }
 
@@ -628,9 +656,10 @@ export class PdfRenderEngineService {
     pageNum: number,
     totalPages: number,
   ): void {
+    const maxX = page.getWidth() - 40;
     page.drawLine({
       start: { x: 40, y: 35 },
-      end: { x: 572, y: 35 },
+      end: { x: maxX, y: 35 },
       color: rgb(0.8, 0.85, 0.9),
       thickness: 0.8,
     });
@@ -644,5 +673,17 @@ export class PdfRenderEngineService {
         color: rgb(0.4, 0.45, 0.5),
       },
     );
+    if (meta.snapshotDigest) {
+      page.drawText(
+        `Digest de Manifiesto (Contenido): ${meta.snapshotDigest}`,
+        {
+          x: 40,
+          y: 14,
+          size: 6,
+          font: regular,
+          color: rgb(0.4, 0.45, 0.5),
+        },
+      );
+    }
   }
 }

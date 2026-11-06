@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
+import { createHash } from "crypto";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { AUDIT_EVENT_PORT, AuditEventPort } from "../audit/audit-event.port";
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
 import {
   DocumentParticipantNotFoundError,
+  InvalidLifecycleTransitionError,
   SignatureType,
   SnapshotIntegrityError,
 } from "../../domain/document-lifecycle/document-lifecycle";
@@ -25,9 +27,16 @@ export class SignDocumentSnapshotUseCase {
     snapshotId: string;
     participantId: string;
     signatureType: SignatureType;
+    attestationText?: string;
     evidenceData?: Record<string, unknown>;
     user: AuthenticatedUser;
   }) {
+    if (input.signatureType === "DIGITAL_CERTIFICADA") {
+      throw new InvalidLifecycleTransitionError(
+        "La modalidad DIGITAL_CERTIFICADA no está habilitada operativamente. Requiere integración PKI con entidad de certificación acreditada por la ONAC según Ley 527 de 1999. Utilice ATESTACION_USUARIO, MANUSCRITA_PRESENCIAL o DIBUJADA_UI.",
+      );
+    }
+
     const instance = await this.prisma.documentInstance.findUnique({
       where: { id: input.instanceId },
       include: {
@@ -74,6 +83,31 @@ export class SignDocumentSnapshotUseCase {
 
     const now = new Date();
 
+    // Cálculo del hash de atestación probatoria
+    const attestationDigest = createHash("sha256")
+      .update(
+        `${snapshot.sha256Hash}:${participant.documentNumber || participant.fullName}:${now.toISOString()}:${input.signatureType}`,
+      )
+      .digest("hex");
+
+    const evidenceData = {
+      ...(input.evidenceData || {}),
+      attestationText:
+        (input.evidenceData?.attestationText as string) ||
+        input.attestationText ||
+        "Atestiguo bajo juramento y responsabilidad profesional que he revisado el contenido de este documento y confirmo la veracidad de la información clínica registrada en el proceso de donación.",
+      attestationDigest,
+      authenticatedUserId: input.user.userId,
+      signerFullName: participant.fullName,
+      signerDocumentType: participant.documentType || "CC",
+      signerDocumentNumber: participant.documentNumber || "N/A",
+      signerRole: participant.signerRole,
+      snapshotId: snapshot.id,
+      snapshotBinaryHash: snapshot.sha256Hash,
+      legalNotice:
+        "Atestación electrónica y evidencia documental interna conforme a la política GODT Regional 3. No constituye firma digital PKI (Ley 527/1999).",
+    };
+
     // Registrar firma vinculada indivisiblemente al hash del snapshot
     const signature = await this.prisma.documentSignature.create({
       data: {
@@ -83,7 +117,7 @@ export class SignDocumentSnapshotUseCase {
         signatureType: input.signatureType,
         snapshotHash: snapshot.sha256Hash,
         signedAt: now,
-        evidenceData: (input.evidenceData || {}) as any,
+        evidenceData: evidenceData as any,
         authenticatedUserId: input.user.userId,
         status: "VALIDA",
       },

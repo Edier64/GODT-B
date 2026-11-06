@@ -140,6 +140,7 @@ model SystemUser {
   canonicalHistoryCreated ProcessCanonicalHistory[] @relation("CanonicalHistoryCreator")
   signaturesRegistered  DocumentSignature[]       @relation("SignatureRegistrar")
   custodyEventsRecorded CustodyEvent[]            @relation("CustodyEventRecorder")
+  custodyEventsVerified CustodyEvent[]            @relation("CustodyIntegrityVerifier")
 
   @@map("SYSTEM_USER")
 }
@@ -818,7 +819,10 @@ model CustodyEvent {
   receiverInstitution   String?          @map("receiver_institution") @db.VarChar(200)
   occurredAt            DateTime         @map("occurred_at") @db.Timestamptz(6)
   location              String           @db.VarChar(200)
-  integrityVerified     Boolean          @default(true) @map("integrity_verified")
+  integrityVerified     Boolean          @default(false) @map("integrity_verified")
+  verifiedById          String?          @map("verified_by_id") @db.Uuid
+  verifiedAt            DateTime?        @map("verified_at") @db.Timestamptz(6)
+  verifierNotes         String?          @map("verifier_notes") @db.Text
   observations          String?          @db.Text
   recordedById          String           @map("recorded_by_id") @db.Uuid
   createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -826,6 +830,7 @@ model CustodyEvent {
   documentInstance      DocumentInstance @relation(fields: [documentInstanceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   process               DonationProcess  @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   recordedBy            SystemUser       @relation("CustodyEventRecorder", fields: [recordedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  verifiedBy            SystemUser?      @relation("CustodyIntegrityVerifier", fields: [verifiedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([documentInstanceId, sequenceNumber])
   @@index([processId, sequenceNumber])

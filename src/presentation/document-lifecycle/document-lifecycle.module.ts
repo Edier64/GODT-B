@@ -9,6 +9,7 @@ import { GenerateDocumentSnapshotUseCase } from "../../application/document-life
 import { ManageDocumentParticipantsUseCase } from "../../application/document-lifecycle/manage-document-participants.use-case";
 import { SignDocumentSnapshotUseCase } from "../../application/document-lifecycle/sign-document-snapshot.use-case";
 import { ReleaseDocumentInstanceUseCase } from "../../application/document-lifecycle/release-document-instance.use-case";
+import { ReopenDocumentInstanceUseCase } from "../../application/document-lifecycle/reopen-document-instance.use-case";
 import { ManageCustodyEventsUseCase } from "../../application/document-lifecycle/manage-custody-events.use-case";
 import { GetDocumentSnapshotUseCase } from "../../application/document-lifecycle/get-document-snapshot.use-case";
 import { PdfRenderEngineService } from "../../application/pdf/pdf-render-engine.service";
@@ -26,6 +27,7 @@ import { AUDIT_EVENT_PORT } from "../../application/audit/audit-event.port";
     ManageDocumentParticipantsUseCase,
     SignDocumentSnapshotUseCase,
     ReleaseDocumentInstanceUseCase,
+    ReopenDocumentInstanceUseCase,
     ManageCustodyEventsUseCase,
     GetDocumentSnapshotUseCase,
     PdfRenderEngineService,
@@ -43,6 +45,7 @@ import { AUDIT_EVENT_PORT } from "../../application/audit/audit-event.port";
     ManageDocumentParticipantsUseCase,
     SignDocumentSnapshotUseCase,
     ReleaseDocumentInstanceUseCase,
+    ReopenDocumentInstanceUseCase,
     ManageCustodyEventsUseCase,
     GetDocumentSnapshotUseCase,
     PdfRenderEngineService,

@@ -51,6 +51,11 @@ export class SignDocumentSnapshotDto {
   @IsString()
   signatureType!: SignatureType;
 
+  @ApiPropertyOptional({ description: "Declaración formal o juramentada de atestación del usuario" })
+  @IsOptional()
+  @IsString()
+  attestationText?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   evidenceData?: Record<string, unknown>;
@@ -124,5 +129,19 @@ export class CreateCustodyEventDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  verifierNotes?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   observations?: string;
+}
+
+export class ReopenDocumentInstanceDto {
+  @ApiProperty({
+    description: "Justificación clínica o administrativa obligatoria para autorizar la reapertura técnica",
+    minLength: 10,
+  })
+  @IsString()
+  justification!: string;
 }

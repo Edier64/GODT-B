@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { PrismaService } from "../src/infrastructure/prisma/prisma.service";
 import { ValidateDocumentInstanceUseCase } from "../src/application/document-lifecycle/validate-document-instance.use-case";
 import { CompleteDocumentInstanceUseCase } from "../src/application/document-lifecycle/complete-document-instance.use-case";
@@ -7,6 +8,7 @@ import { SignDocumentSnapshotUseCase } from "../src/application/document-lifecyc
 import { ReleaseDocumentInstanceUseCase } from "../src/application/document-lifecycle/release-document-instance.use-case";
 import { ManageCustodyEventsUseCase } from "../src/application/document-lifecycle/manage-custody-events.use-case";
 import { GetDocumentSnapshotUseCase } from "../src/application/document-lifecycle/get-document-snapshot.use-case";
+import { ReopenDocumentInstanceUseCase } from "../src/application/document-lifecycle/reopen-document-instance.use-case";
 import { PdfRenderEngineService } from "../src/application/pdf/pdf-render-engine.service";
 import { DocumentResponseValidator } from "../src/application/document-engine/document-response.validator";
 import { LocalPrivateStorageAdapter } from "../src/infrastructure/documents/local-private-storage.adapter";
@@ -21,6 +23,7 @@ import {
   SnapshotIntegrityError,
   CustodySequenceError,
 } from "../src/domain/document-lifecycle/document-lifecycle";
+import { DonationProcessAccessDeniedError } from "../src/domain/processes/donation-process";
 
 describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D Integration", () => {
   let prisma: PrismaService;
@@ -32,6 +35,7 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
   let releaseUseCase: ReleaseDocumentInstanceUseCase;
   let custodyUseCase: ManageCustodyEventsUseCase;
   let getSnapshotUseCase: GetDocumentSnapshotUseCase;
+  let reopenUseCase: ReopenDocumentInstanceUseCase;
   let pdfRenderer: PdfRenderEngineService;
   let storage: LocalPrivateStorageAdapter;
 
@@ -82,6 +86,7 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
     releaseUseCase = new ReleaseDocumentInstanceUseCase(prisma, mockAuditPort);
     custodyUseCase = new ManageCustodyEventsUseCase(prisma, mockAuditPort);
     getSnapshotUseCase = new GetDocumentSnapshotUseCase(prisma, storage);
+    reopenUseCase = new ReopenDocumentInstanceUseCase(prisma, mockAuditPort);
 
     // 1. Crear Usuario de Prueba
     testUser = await prisma.systemUser.create({
@@ -293,16 +298,16 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
 
   afterAll(async () => {
     try {
-      if (testInstance?.id) {
-        await prisma.custodyEvent.deleteMany({ where: { documentInstanceId: testInstance.id } });
-        await prisma.documentSignature.deleteMany({ where: { documentInstanceId: testInstance.id } });
-        await prisma.documentParticipant.deleteMany({ where: { documentInstanceId: testInstance.id } });
-        await prisma.generatedPdfDocument.deleteMany({ where: { documentInstanceId: testInstance.id } });
-        await prisma.documentInstance.update({ where: { id: testInstance.id }, data: { currentRevisionId: null } });
-        await prisma.documentFieldProvenance.deleteMany({ where: { responseRevision: { documentInstanceId: testInstance.id } } });
-        await prisma.documentResponseRevision.deleteMany({ where: { documentInstanceId: testInstance.id } });
+      if (testProcess?.id) {
+        await prisma.custodyEvent.deleteMany({ where: { documentInstance: { processId: testProcess.id } } });
+        await prisma.documentSignature.deleteMany({ where: { documentInstance: { processId: testProcess.id } } });
+        await prisma.documentParticipant.deleteMany({ where: { documentInstance: { processId: testProcess.id } } });
+        await prisma.generatedPdfDocument.deleteMany({ where: { processId: testProcess.id } });
+        await prisma.documentInstance.updateMany({ where: { processId: testProcess.id }, data: { currentRevisionId: null } });
+        await prisma.documentFieldProvenance.deleteMany({ where: { responseRevision: { documentInstance: { processId: testProcess.id } } } });
+        await prisma.documentResponseRevision.deleteMany({ where: { documentInstance: { processId: testProcess.id } } });
         await prisma.processDocument.updateMany({ where: { processId: testProcess.id }, data: { currentInstanceId: null } });
-        await prisma.documentInstance.delete({ where: { id: testInstance.id } });
+        await prisma.documentInstance.deleteMany({ where: { processId: testProcess.id } });
         await prisma.processDocument.deleteMany({ where: { processId: testProcess.id } });
       }
       if (testTemplateVersion?.id) {
@@ -429,6 +434,13 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
     expect(meta.responseData.paciente.nombresApellidos).toBe("Donante Pruebas Fase D");
     expect(meta.responseData.paraclinicos.gasometriaBasal.ph).toBe(7.39);
     expect(meta.renderEngine).toContain("pdf-lib");
+
+    // Desacoplamiento de hash: Snapshot Digest (Manifiesto canónico) vs Hash Binario del PDF
+    expect(meta.snapshotDigest).toBeDefined();
+    expect(meta.snapshotDigest).toHaveLength(64);
+    expect(meta.snapshotDigest).not.toBe(originalPdfHash);
+    expect(meta.participants).toBeDefined();
+    expect(meta.participants.length).toBe(2);
   });
 
   // 5. Inmutabilidad del Snapshot ante Modificaciones Posteriores
@@ -467,18 +479,32 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
       }),
     ).rejects.toThrow(SnapshotIntegrityError);
 
+    // 1b. Bloqueo operativo de DIGITAL_CERTIFICADA (Ley 527/1999 / ONAC requerido)
+    await expect(
+      signUseCase.execute({
+        instanceId: testInstance.id,
+        snapshotId: generatedPdf.id,
+        participantId: coord.id,
+        signatureType: "DIGITAL_CERTIFICADA",
+        user: authUser,
+      }),
+    ).rejects.toThrow(InvalidLifecycleTransitionError);
+
     // 2. Firma válida de la Coordinadora
     const sig1Res = await signUseCase.execute({
       instanceId: testInstance.id,
       snapshotId: generatedPdf.id,
       participantId: coord.id,
       signatureType: "ATESTACION_USUARIO",
+      attestationText: "He verificado la alerta y confirmo la idoneidad clínica del donante.",
       evidenceData: { ip: "127.0.0.1", userAgent: "GODT-Regional-3/Test" },
       user: authUser,
     });
 
     expect(sig1Res.signature.id).toBeDefined();
     expect(sig1Res.signature.snapshotHash).toBe(originalPdfHash);
+    expect((sig1Res.signature.evidenceData as any).legalNotice).toContain("Ley 527/1999");
+    expect((sig1Res.signature.evidenceData as any).attestationDigest).toHaveLength(64);
     // Aún falta el médico, por ende no está completamente firmado
     expect(sig1Res.allRequiredSignaturesMet).toBe(false);
     expect(sig1Res.resultingStatus).toBe("PENDIENTE_FIRMAS");
@@ -529,19 +555,162 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
 
     const pdfInDb = await prisma.generatedPdfDocument.findUnique({ where: { id: generatedPdf.id } });
     expect(pdfInDb?.status).toBe("RELEASED");
+
+    // Intento de reabrir documento en estado LIBERADO -> estrictamente prohibido
+    await expect(
+      reopenUseCase.execute({
+        instanceId: testInstance.id,
+        justification: "Reapertura no autorizada sobre documento sellado y liberado",
+        user: authUser,
+      }),
+    ).rejects.toThrow(DocumentLockedError);
   });
 
-  // 9. Descarga Protegida del PDF Oficial
+  // 8b. Reapertura Técnica Controlada con Invalidez de Snapshots Previos
+  it("Escenario 8b: Reapertura técnica controlada con justificación obligatoria e invalidación de snapshots previos", async () => {
+    // Crear instancia auxiliar para prueba de reapertura
+    const auxDoc = await prisma.processDocument.create({
+      data: {
+        processId: testProcess.id,
+        positionNumber: 2,
+        documentCode: "ANEXO_2",
+        title: "Anexo 2: Notificación a Deudos",
+        category: "LEGAL",
+        status: "BORRADOR",
+        applicabilityStatus: "APLICABLE",
+        orderIndex: 2,
+      },
+    });
+
+    const auxInstance = await prisma.documentInstance.create({
+      data: {
+        donorId: testDonor.id,
+        processId: testProcess.id,
+        processDocumentId: auxDoc.id,
+        templateId: testTemplate.id,
+        templateVersionId: testTemplateVersion.id,
+        documentCode: "ANEXO_2",
+        status: "BORRADOR",
+        createdById: testUser.id,
+        updatedById: testUser.id,
+      },
+    });
+
+    const auxRev = await prisma.documentResponseRevision.create({
+      data: {
+        documentInstanceId: auxInstance.id,
+        revisionNumber: 1,
+        responseData: {
+          paciente: {
+            nombresApellidos: "Donante Reapertura",
+            numeroDocumento: testDonor.documentNumber,
+            edad: 34,
+            sexo: "MASCULINO",
+          },
+          clinicos: {
+            causaMuerte: "Encefalopatía Anóxica",
+            grupoSanguineo: "O",
+            factorRh: "POSITIVO",
+          },
+          paraclinicos: {
+            gasometriaBasal: { ph: 7.4 },
+          },
+        },
+        createdById: testUser.id,
+      },
+    });
+
+    await prisma.documentInstance.update({
+      where: { id: auxInstance.id },
+      data: { currentRevisionId: auxRev.id },
+    });
+
+    // Asignar participante y completar
+    await participantsUseCase.assign({
+      instanceId: auxInstance.id,
+      fullName: "Dra. Test Reapertura",
+      signerRole: "MEDICO_TRATANTE",
+      signatureRequired: true,
+      user: authUser,
+    });
+
+    const snapResult = await snapshotUseCase.execute({
+      instanceId: auxInstance.id,
+      user: authUser,
+    });
+    expect(snapResult.resultingStatus).toBe("PENDIENTE_FIRMAS");
+
+    // 1. Intento sin justificación o justificación muy corta (< 10 caracteres)
+    await expect(
+      reopenUseCase.execute({
+        instanceId: auxInstance.id,
+        justification: "Error",
+        user: authUser,
+      }),
+    ).rejects.toThrow(InvalidLifecycleTransitionError);
+
+    // 2. Intento con usuario sin rol administrativo/coordinador
+    const unauthorizedUser: AuthenticatedUser = {
+      userId: testUser.id,
+      role: "TECHNICIAN",
+      institutionalIps: ["Hospital Universitario del Valle"],
+    };
+    await expect(
+      reopenUseCase.execute({
+        instanceId: auxInstance.id,
+        justification: "Se requiere corregir la fecha de notificación",
+        user: unauthorizedUser,
+      }),
+    ).rejects.toThrow(DonationProcessAccessDeniedError);
+
+    // 3. Reapertura válida por Coordinador
+    const reopenRes = await reopenUseCase.execute({
+      instanceId: auxInstance.id,
+      justification: "Corrección técnica justificada de datos de notificación clínica",
+      user: authUser,
+    });
+
+    expect(reopenRes.previousStatus).toBe("PENDIENTE_FIRMAS");
+    expect(reopenRes.status).toBe("BORRADOR");
+
+    // Comprobar que el snapshot anterior quedó marcado como SUPERSEDED
+    const supersedSnap = await prisma.generatedPdfDocument.findUnique({
+      where: { id: snapResult.generatedPdf.id },
+    });
+    expect(supersedSnap?.status).toBe("SUPERSEDED");
+
+    // Comprobar registro de auditoría
+    const reopenAudit = auditEventsRecorded.find((e) => e.action === "DOCUMENT_INSTANCE_REOPENED");
+    expect(reopenAudit).toBeDefined();
+    expect(reopenAudit.metadata.justification).toContain("Corrección técnica");
+
+    // Limpieza de instancia auxiliar
+    await prisma.documentInstance.update({ where: { id: auxInstance.id }, data: { currentRevisionId: null } });
+    await prisma.documentFieldProvenance.deleteMany({ where: { responseRevision: { documentInstanceId: auxInstance.id } } });
+    await prisma.documentResponseRevision.deleteMany({ where: { documentInstanceId: auxInstance.id } });
+    await prisma.documentParticipant.deleteMany({ where: { documentInstanceId: auxInstance.id } });
+    await prisma.generatedPdfDocument.deleteMany({ where: { documentInstanceId: auxInstance.id } });
+    await prisma.documentInstance.delete({ where: { id: auxInstance.id } });
+    await prisma.processDocument.delete({ where: { id: auxDoc.id } });
+  });
+
+  // 9. Descarga Protegida del PDF Oficial y Detección de Adulteración
   it("Escenario 9: Descarga y verificación de integridad criptográfica del PDF emitido", async () => {
     const downloaded = await getSnapshotUseCase.downloadPdf(generatedPdf.id, authUser);
 
     expect(downloaded.mimeType).toBe("application/pdf");
     expect(downloaded.sha256Hash).toBe(originalPdfHash);
     expect(downloaded.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+
+    // Verificación de adulteración criptográfica: alteración de un byte invalida el hash
+    const tampered = Buffer.from(downloaded.buffer);
+    tampered[150] = tampered[150] ^ 0xff;
+    const tamperedHash = createHash("sha256").update(tampered).digest("hex");
+    expect(tamperedHash).not.toBe(downloaded.sha256Hash);
   });
 
-  // 10. Cadena de Custodia Append-Only (Anexo 8)
-  it("Escenario 10: Secuencia inmutable de eventos de custodia (Anexo 8)", async () => {
+  // 10. Cadena de Custodia Append-Only y Verificación de Integridad (Anexo 8)
+  it("Escenario 10: Secuencia inmutable de eventos de custodia y verificación térmica (Anexo 8)", async () => {
     // Instancia específica de Anexo 8
     const anexo8Doc = await prisma.processDocument.create({
       data: {
@@ -574,7 +743,7 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
     const t2 = new Date("2026-11-06T15:30:00Z");
     const tRetro = new Date("2026-11-06T13:00:00Z");
 
-    // Evento 1: Recolección
+    // Evento 1: Recolección (integrityVerified por defecto en false si no se valida explícitamente)
     const ev1 = await custodyUseCase.append({
       instanceId: anexo8Inst.id,
       eventType: "RECOLECCION",
@@ -586,13 +755,28 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
       receiverName: "Tec. Custodio Transporte",
       occurredAt: t1,
       location: "Quirófano 3 — HUV",
-      integrityVerified: true,
       user: authUser,
     });
 
     expect(ev1.sequenceNumber).toBe(1);
+    expect(ev1.integrityVerified).toBe(false);
 
-    // Evento 2: Transporte
+    // Intento con temperatura fuera de límites admisibles (> 45°C)
+    await expect(
+      custodyUseCase.append({
+        instanceId: anexo8Inst.id,
+        eventType: "TRANSPORTE",
+        itemDescription: "Córneas donante cadavérico (Par)",
+        temperatureCelsius: 60,
+        transferorName: "Tec. Custodio Transporte",
+        receiverName: "Transportador",
+        occurredAt: t2,
+        location: "Vehículo",
+        user: authUser,
+      }),
+    ).rejects.toThrow(CustodySequenceError);
+
+    // Evento 2: Transporte con verificación de integridad auditada
     const ev2 = await custodyUseCase.append({
       instanceId: anexo8Inst.id,
       eventType: "TRANSPORTE",
@@ -605,10 +789,15 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
       occurredAt: t2,
       location: "Banco de Tejidos — Cali",
       integrityVerified: true,
+      verifierNotes: "Nevera sellada e inspeccionada con precinto intacto",
       user: authUser,
     });
 
     expect(ev2.sequenceNumber).toBe(2);
+    expect(ev2.integrityVerified).toBe(true);
+    expect(ev2.verifiedById).toBe(authUser.userId);
+    expect(ev2.verifiedAt).not.toBeNull();
+    expect(ev2.verifierNotes).toContain("precinto intacto");
 
     // Intento de evento extemporáneo hacia el pasado -> error de secuencia
     await expect(

@@ -126,7 +126,55 @@ export class GenerateDocumentSnapshotUseCase {
       }));
     }
 
-    // 2. Renderizar PDF con el motor vectorial especializado
+    // 2. Construir participantes congelados con fidelidad histórica completa
+    const frozenParticipants = instance.documentParticipants.map((p) => ({
+      id: p.id,
+      fullName: p.fullName,
+      documentType: p.documentType || "CC",
+      documentNumber: p.documentNumber || "N/A",
+      signerRole: p.signerRole,
+      isSigner: p.isSigner,
+      signatureRequired: p.signatureRequired,
+      signatureOrder: p.signatureOrder || undefined,
+      status: p.status,
+    }));
+
+    // Manifiesto determinista canónico previo a la generación
+    const manifestToDigest = {
+      instanceId: instance.id,
+      documentCode: instance.documentCode,
+      templateVersionId: instance.templateVersionId,
+      templateVersionNumber: instance.templateVersion.versionNumber,
+      definitionHash: instance.templateVersion.definitionHash || "",
+      revisionNumber,
+      responseData,
+      provenance: (instance.currentRevision?.provenance || []).map((p) => ({
+        fieldPath: p.fieldPath,
+        sourceKind: p.sourceKind,
+        canonicalFieldKey: p.canonicalFieldKey || undefined,
+      })),
+      canonicalValues: canonicalValuesMap,
+      repeatableObservations,
+      participants: frozenParticipants,
+      generatedById: input.user.userId,
+      generatedAt: now.toISOString(),
+    };
+
+    function sortObjectKeys(obj: any): any {
+      if (obj === null || typeof obj !== "object") return obj;
+      if (Array.isArray(obj)) return obj.map(sortObjectKeys);
+      const sorted: Record<string, any> = {};
+      for (const k of Object.keys(obj).sort()) {
+        sorted[k] = sortObjectKeys(obj[k]);
+      }
+      return sorted;
+    }
+
+    const snapshotDigest = createHash("sha256")
+      .update(JSON.stringify(sortObjectKeys(manifestToDigest)))
+      .digest("hex");
+
+    // 3. Renderizar PDF con el motor vectorial especializado incorporando el snapshotDigest
     const pdfBuffer = await this.pdfRenderer.render({
       documentCode: instance.documentCode,
       title: instance.processDocument?.title || instance.documentCode,
@@ -141,6 +189,7 @@ export class GenerateDocumentSnapshotUseCase {
         templateVersion: instance.templateVersion.versionNumber,
         generatedAt: now,
         generatedByName: input.user.role,
+        snapshotDigest,
         signatures: instance.documentParticipants.map((p) => ({
           signerRole: p.signerRole,
           fullName: p.fullName,
@@ -166,10 +215,10 @@ export class GenerateDocumentSnapshotUseCase {
       },
     });
 
-    // 3. Hash criptográfico del binario PDF
+    // 4. Hash criptográfico del binario PDF final
     const sha256Hash = createHash("sha256").update(pdfBuffer).digest("hex");
 
-    // 4. Guardar archivo en almacenamiento seguro privado
+    // 5. Guardar archivo en almacenamiento seguro privado
     const filename = `${instance.documentCode}_PROC_${instance.process?.processCode || "DOC"}_REV${revisionNumber}.pdf`;
     const stored = await this.storage.put({
       buffer: pdfBuffer,
@@ -177,8 +226,11 @@ export class GenerateDocumentSnapshotUseCase {
       mimeType: "application/pdf",
     });
 
-    // 5. Construir snapshot inmutable forense
-    const snapshotMetadata: DocumentSnapshotMetadata = {
+    // 6. Construir snapshot inmutable forense
+    const snapshotMetadata: DocumentSnapshotMetadata & {
+      snapshotDigest: string;
+      pdfBinaryHash: string;
+    } = {
       processId: instance.processId || "",
       positionNumber: instance.processDocument?.positionNumber ?? 1,
       documentCode: instance.documentCode,
@@ -195,18 +247,12 @@ export class GenerateDocumentSnapshotUseCase {
       })),
       canonicalValues: canonicalValuesMap,
       repeatableObservations,
-      participants: instance.documentParticipants.map((p) => ({
-        id: p.id,
-        fullName: p.fullName,
-        signerRole: p.signerRole,
-        isSigner: p.isSigner,
-        signatureRequired: p.signatureRequired,
-        signatureOrder: p.signatureOrder || undefined,
-        status: p.status,
-      })),
+      participants: frozenParticipants,
       generatedById: input.user.userId,
       generatedAt: now.toISOString(),
       renderEngine: "pdf-lib/1.17",
+      snapshotDigest,
+      pdfBinaryHash: sha256Hash,
     };
 
     // 6. Determinar número de versión PDF para esta instancia
