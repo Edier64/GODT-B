@@ -16,6 +16,7 @@ import {
 } from "../processes/donation-process.repository";
 import { AUDIT_EVENT_PORT, AuditEventPort } from "../audit/audit-event.port";
 import { CanonicalPropagationEngine } from "./canonical-propagation.engine";
+import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import {
   DonationProcessAccessDeniedError,
   DonationProcessNotFoundError,
@@ -32,6 +33,7 @@ export class ResolveCanonicalConflictUseCase {
     private readonly propagationEngine: CanonicalPropagationEngine,
     @Inject(AUDIT_EVENT_PORT)
     private readonly audit: AuditEventPort,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(input: {
@@ -75,12 +77,13 @@ export class ResolveCanonicalConflictUseCase {
     }
 
     let finalValue = currentVal.currentValue;
+    const details = currentVal.conflictDetails as Record<string, unknown> | null;
+    const proposedValue = details?.proposedVal;
 
     if (input.strategy === "ACCEPT_CANDIDATE") {
       // Si el conflicto guardó proposedVal, aplicarlo
-      const details = currentVal.conflictDetails as Record<string, unknown> | null;
-      if (details?.proposedVal !== undefined) {
-        finalValue = details.proposedVal;
+      if (proposedValue !== undefined) {
+        finalValue = proposedValue;
       }
       await this.propagationEngine.applyAndPropagate({
         processId: input.processId,
@@ -93,6 +96,24 @@ export class ResolveCanonicalConflictUseCase {
           justification: input.justification.trim(),
         },
       });
+    } else if (input.strategy === "KEEP_CURRENT") {
+      // Conservar el valor local existente en el documento destino
+      finalValue = currentVal.currentValue;
+      if (details?.instanceId && typeof details.instanceId === "string") {
+        await this.prisma.documentFieldProvenance.updateMany({
+          where: {
+            responseRevision: { documentInstanceId: details.instanceId },
+            fieldPath: (details.fieldPath as string) || undefined,
+          },
+          data: {
+            conflictStatus: "RESOLVED",
+            conflictDecision: "KEEP_CURRENT",
+            conflictJustification: input.justification.trim(),
+            conflictResolvedById: input.user.userId,
+            conflictResolvedAt: new Date(),
+          },
+        });
+      }
     } else if (input.strategy === "MANUAL_OVERRIDE") {
       if (input.resolvedValue === undefined) {
         throw new CanonicalValidationError(
@@ -107,7 +128,7 @@ export class ResolveCanonicalConflictUseCase {
         sourceKind: "MANUAL",
         actorUserId: input.user.userId,
         conflictResolution: {
-          strategy: "ACCEPT_CANDIDATE", // Propaga el valor manual rectificado
+          strategy: "ACCEPT_CANDIDATE", // Propaga el valor manual consensuado
           justification: input.justification.trim(),
         },
       });
@@ -122,6 +143,8 @@ export class ResolveCanonicalConflictUseCase {
         resolvedAt: new Date().toISOString(),
         strategy: input.strategy,
         justification: input.justification.trim(),
+        previousValue: currentVal.currentValue,
+        proposedValue,
         finalValue,
       },
       input.user.userId,
@@ -136,7 +159,11 @@ export class ResolveCanonicalConflictUseCase {
       metadata: {
         canonicalFieldKey: input.canonicalFieldKey,
         strategy: input.strategy,
+        previousValue: currentVal.currentValue,
+        proposedValue,
+        resultingValue: finalValue,
         justification: input.justification.trim(),
+        resolvedAt: new Date().toISOString(),
       },
     });
 

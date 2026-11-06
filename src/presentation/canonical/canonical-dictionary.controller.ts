@@ -82,6 +82,16 @@ export class CanonicalDictionaryController {
     return this.run(() => this.getProcessValues.getHistory(processId, fieldKey, user));
   }
 
+  @Get("donation-processes/:id/canonical-values/:fieldKey/observations")
+  @ApiOperation({ summary: "Consultar serie temporal de observaciones clínicas repetibles (pH, creatinina)" })
+  async getObservations(
+    @Param("id") processId: string,
+    @Param("fieldKey") fieldKey: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.run(() => this.getProcessValues.getObservations(processId, fieldKey, user));
+  }
+
   @Get("donation-processes/:id/canonical-values/:fieldKey/conflicts")
   @ApiOperation({ summary: "Consultar conflictos activos de valores canónicos en el proceso" })
   async getConflicts(
