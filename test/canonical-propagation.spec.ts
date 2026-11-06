@@ -270,6 +270,12 @@ describe("Canonical Dictionary, Shared Markers & Propagation Engine (Phase C)", 
       listHistory: jest.fn().mockImplementation(async (processId, key) => {
         return historyList.filter((h) => h.processId === processId && h.canonicalFieldKey === key);
       }),
+      listObservations: jest.fn().mockImplementation(async (processId, key, contextFilter) => {
+        return historyList
+          .filter((h) => h.processId === processId && h.canonicalFieldKey === key)
+          .filter((h) => (!contextFilter ? true : h.sampleContext === contextFilter))
+          .sort((a, b) => b.effectiveAt.getTime() - a.effectiveAt.getTime());
+      }),
       updateConflictStatus: jest.fn().mockImplementation(async (processId, key, status, details, actorUserId) => {
         const compositeKey = `${processId}:${key}`;
         const existing = processValuesMap.get(compositeKey);
@@ -372,12 +378,25 @@ describe("Canonical Dictionary, Shared Markers & Propagation Engine (Phase C)", 
           provenanceList.push(prov);
           return prov;
         }),
+        updateMany: jest.fn().mockImplementation(async ({ where, data }) => {
+          let count = 0;
+          for (const prov of provenanceList) {
+            if (
+              (!where.documentInstanceId || prov.documentInstanceId === where.documentInstanceId) &&
+              (!where.fieldPath || prov.fieldPath === where.fieldPath)
+            ) {
+              Object.assign(prov, data);
+              count++;
+            }
+          }
+          return { count };
+        }),
       },
     };
 
     propagationEngine = new CanonicalPropagationEngine(mockRepo, mockPrisma, mockAuditPort);
     applyUseCase = new ApplyCanonicalValueUseCase(propagationEngine, mockPrisma);
-    resolveUseCase = new ResolveCanonicalConflictUseCase(mockRepo, mockProcessRepo, propagationEngine, mockAuditPort);
+    resolveUseCase = new ResolveCanonicalConflictUseCase(mockRepo, mockProcessRepo, propagationEngine, mockAuditPort, mockPrisma);
     getValuesUseCase = new GetProcessCanonicalValuesUseCase(mockRepo, mockProcessRepo);
     listCatalogUseCase = new ListCanonicalCatalogUseCase(mockRepo);
   });
