@@ -323,7 +323,7 @@ export const OFFICIAL_REGIONAL_3_POSITIONS: ReadonlyArray<PackagePositionDefinit
   {
     positionNumber: 20,
     documentCode: "POS_NORMATIVA_20",
-    title: "Posición Normativa 20 — [Pendiente de homologación institucional]",
+    title: "Posición Reservada 20 — [Pendiente de homologación institucional]",
     category: "PENDING_HOMOLOGATION",
     isMandatory: false,
     orderIndex: 20,
@@ -333,7 +333,7 @@ export const OFFICIAL_REGIONAL_3_POSITIONS: ReadonlyArray<PackagePositionDefinit
   {
     positionNumber: 21,
     documentCode: "POS_NORMATIVA_21",
-    title: "Posición Normativa 21 — [Pendiente de homologación institucional]",
+    title: "Posición Reservada 21 — [Pendiente de homologación institucional]",
     category: "PENDING_HOMOLOGATION",
     isMandatory: false,
     orderIndex: 21,
@@ -343,7 +343,7 @@ export const OFFICIAL_REGIONAL_3_POSITIONS: ReadonlyArray<PackagePositionDefinit
   {
     positionNumber: 22,
     documentCode: "POS_NORMATIVA_22",
-    title: "Posición Normativa 22 — [Pendiente de homologación institucional]",
+    title: "Posición Reservada 22 — [Pendiente de homologación institucional]",
     category: "PENDING_HOMOLOGATION",
     orderIndex: 22,
     isMandatory: false,
@@ -353,7 +353,7 @@ export const OFFICIAL_REGIONAL_3_POSITIONS: ReadonlyArray<PackagePositionDefinit
   {
     positionNumber: 23,
     documentCode: "POS_NORMATIVA_23",
-    title: "Posición Normativa 23 — [Pendiente de homologación institucional]",
+    title: "Posición Reservada 23 — [Pendiente de homologación institucional]",
     category: "PENDING_HOMOLOGATION",
     orderIndex: 23,
     isMandatory: false,

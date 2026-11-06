@@ -37,6 +37,7 @@ export class ManageCustodyEventsUseCase {
     occurredAt: Date;
     location: string;
     integrityVerified?: boolean;
+    verifierNotes?: string;
     observations?: string;
     user: AuthenticatedUser;
   }) {
@@ -65,43 +66,61 @@ export class ManageCustodyEventsUseCase {
       );
     }
 
-    // Obtener último evento para validar secuencia
-    const lastEvent = await this.prisma.custodyEvent.findFirst({
-      where: { documentInstanceId: instance.id },
-      orderBy: { sequenceNumber: "desc" },
-    });
-
-    const expectedSequence = lastEvent ? lastEvent.sequenceNumber + 1 : 1;
-
-    // Validar coherencia temporal
-    if (lastEvent && input.occurredAt < lastEvent.occurredAt) {
-      throw new CustodySequenceError(
-        `La fecha/hora del nuevo evento (${input.occurredAt.toISOString()}) no puede ser anterior al evento previo #${lastEvent.sequenceNumber} (${lastEvent.occurredAt.toISOString()})`,
-      );
+    // Validación de temperatura según límites biológicos de preservación de órganos y tejidos
+    if (input.temperatureCelsius !== undefined && input.temperatureCelsius !== null) {
+      if (input.temperatureCelsius < -80 || input.temperatureCelsius > 45) {
+        throw new CustodySequenceError(
+          `La temperatura registrada (${input.temperatureCelsius} °C) está fuera de los rangos biológicos admisibles (-80 °C a 45 °C)`,
+        );
+      }
     }
 
-    const event = await this.prisma.custodyEvent.create({
-      data: {
-        documentInstanceId: instance.id,
-        processId: instance.processId || instance.id,
-        sequenceNumber: expectedSequence,
-        eventType: input.eventType,
-        itemDescription: input.itemDescription,
-        containerCode: input.containerCode,
-        sealNumber: input.sealNumber,
-        temperatureCelsius: input.temperatureCelsius,
-        transferorName: input.transferorName,
-        transferorId: input.transferorId,
-        transferorInstitution: input.transferorInstitution,
-        receiverName: input.receiverName,
-        receiverId: input.receiverId,
-        receiverInstitution: input.receiverInstitution,
-        occurredAt: input.occurredAt,
-        location: input.location,
-        integrityVerified: input.integrityVerified ?? true,
-        observations: input.observations,
-        recordedById: input.user.userId,
-      },
+    const now = new Date();
+    const isVerified = input.integrityVerified === true;
+
+    // Ejecución transaccional para garantizar secuencia atómica bajo concurrencia
+    const event = await this.prisma.$transaction(async (tx) => {
+      // Obtener último evento de manera atómica
+      const lastEvent = await tx.custodyEvent.findFirst({
+        where: { documentInstanceId: instance.id },
+        orderBy: { sequenceNumber: "desc" },
+      });
+
+      const expectedSequence = lastEvent ? lastEvent.sequenceNumber + 1 : 1;
+
+      // Validar coherencia temporal estricta
+      if (lastEvent && input.occurredAt < lastEvent.occurredAt) {
+        throw new CustodySequenceError(
+          `La fecha/hora del nuevo evento (${input.occurredAt.toISOString()}) no puede ser anterior al evento previo #${lastEvent.sequenceNumber} (${lastEvent.occurredAt.toISOString()})`,
+        );
+      }
+
+      return tx.custodyEvent.create({
+        data: {
+          documentInstanceId: instance.id,
+          processId: instance.processId || instance.id,
+          sequenceNumber: expectedSequence,
+          eventType: input.eventType,
+          itemDescription: input.itemDescription,
+          containerCode: input.containerCode,
+          sealNumber: input.sealNumber,
+          temperatureCelsius: input.temperatureCelsius,
+          transferorName: input.transferorName,
+          transferorId: input.transferorId,
+          transferorInstitution: input.transferorInstitution,
+          receiverName: input.receiverName,
+          receiverId: input.receiverId,
+          receiverInstitution: input.receiverInstitution,
+          occurredAt: input.occurredAt,
+          location: input.location,
+          integrityVerified: isVerified,
+          verifiedById: isVerified ? input.user.userId : null,
+          verifiedAt: isVerified ? now : null,
+          verifierNotes: isVerified ? input.verifierNotes || "Verificación formal de integridad y cadena de frío conforme" : null,
+          observations: input.observations,
+          recordedById: input.user.userId,
+        },
+      });
     });
 
     await this.audit.record({
@@ -128,6 +147,9 @@ export class ManageCustodyEventsUseCase {
       where: { documentInstanceId: instanceId },
       include: {
         recordedBy: {
+          select: { id: true, fullName: true, role: true },
+        },
+        verifiedBy: {
           select: { id: true, fullName: true, role: true },
         },
       },
