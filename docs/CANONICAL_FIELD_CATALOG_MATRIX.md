@@ -111,8 +111,8 @@
 
 ---
 
-### Posiciones 07 a 13: Anexo 7 — Fichas Quirúrgicas de Órganos (Corazón, Pulmón, Hígado, Riñón Der, Riñón Izq, Páncreas, Intestino)
-- **Códigos de Plantilla:** `ANEXO_7_CORAZON`, `ANEXO_7_PULMON`, `ANEXO_7_HIGADO`, `ANEXO_7_RINON_DER`, `ANEXO_7_RINON_IZQ`, `ANEXO_7_PANCREAS`, `ANEXO_7_INTESTINO`
+### Posiciones 07 a 13: Anexo 7 — Fichas Quirúrgicas de Órganos (Corazón, Pulmón, Hígado, Riñón Der, Riñón Izq, Páncreas, Otros Órganos)
+- **Códigos de Plantilla:** `ANEXO_7_CORAZON`, `ANEXO_7_PULMON`, `ANEXO_7_HIGADO`, `ANEXO_7_RINON_DERECHO`, `ANEXO_7_RINON_IZQUIERDO`, `ANEXO_7_PANCREAS`, `ANEXO_7_OTROS_ORGANOS`
 - **Estado de Homologación:** `VALIDATED`
 
 | `schemaPath` | `canonicalFieldKey` | `scope` | `bindingPolicy` | `dataType` | `unit` | `cardinality` | `repeatableSelectionStrategy` | Regla de Validación |

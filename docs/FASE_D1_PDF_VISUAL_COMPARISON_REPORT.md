@@ -146,3 +146,4 @@ El motor parametriza dinámicamente las secciones según el tipo de componente:
 3. **Estado de Homologación:**  
    - Los documentos generados cuentan con **`TECHNICALLY_VALIDATED`** en entorno de prueba automatizado.
    - El estado institucional formal de todos los anexos permanece en **`PENDING_HOMOLOGATION`** hasta tanto la Coordinación Regional 3 emita el acto administrativo formal de adopción del paquete documental digital. Ningún documento se emite como "aprobado institucionalmente" sin dicho respaldo normativo.
+

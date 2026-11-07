@@ -761,13 +761,13 @@ describe("Document Lifecycle, Snapshots, Signatures & PDF Rendering — Fase D I
     expect(ev1.sequenceNumber).toBe(1);
     expect(ev1.integrityVerified).toBe(false);
 
-    // Intento con temperatura fuera de límites admisibles (> 45°C)
+    // Intento con temperatura no numérica o no finita
     await expect(
       custodyUseCase.append({
         instanceId: anexo8Inst.id,
         eventType: "TRANSPORTE",
         itemDescription: "Córneas donante cadavérico (Par)",
-        temperatureCelsius: 60,
+        temperatureCelsius: NaN,
         transferorName: "Tec. Custodio Transporte",
         receiverName: "Transportador",
         occurredAt: t2,

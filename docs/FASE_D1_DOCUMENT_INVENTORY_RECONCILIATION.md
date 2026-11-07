@@ -65,3 +65,4 @@ Los siguientes 4 archivos forman parte de los insumos originales pero **NO const
 2. **Corrección de Numeración de Anexos:** Las variantes quirúrgicas de tejidos y órganos corresponden a variantes del **Anexo 7** (Posiciones 7 a 17 del paquete). No deben crearse nomenclaturas inexistentes como "Anexo 10", "Anexo 11", etc. como si fueran anexos normativos independientes.
 3. **Reserva Exclusiva de Posiciones 20 a 23:** Las posiciones 20 a 23 se denominan estrictamente **Posiciones Reservadas [Pendientes de homologación institucional]**. No se les asignan títulos que insinúen adopción o resolución oficial hasta tanto la autoridad competente emita los anexos correspondientes.
 4. **Separación de Documentos Fuente:** Las historias clínicas y documentos de hemodilución/COVID jamás ocupan posiciones del paquete normativo; se procesan de forma append-only en la entidad `SourceDocument`.
+

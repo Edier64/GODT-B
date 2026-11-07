@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-11-06T23:59:16.583Z",
+  "secretUsed": "local-development-secret-32-characters-minimum-123",
+  "issuer": "godt-backend",
+  "users": {
+    "coordinator": {
+      "id": "a0000000-0000-0000-0000-000000000001",
+      "email": "coordinador@godt.gov.co",
+      "name": "Dra. Elena Ramos (Coordinadora Regional 3)",
+      "role": "COORDINATOR",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoiQ09PUkRJTkFUT1IiLCJlbWFpbCI6ImNvb3JkaW5hZG9yQGdvZHQuZ292LmNvIiwibmFtZSI6IkRyYS4gRWxlbmEgUmFtb3MgKENvb3JkaW5hZG9yYSBSZWdpb25hbCAzKSIsImluc3RpdHV0aW9uYWxJcHMiOlsiSG9zcGl0YWwgVW5pdmVyc2l0YXJpbyBkZWwgVmFsbGUiLCJDbMOtbmljYSBJbWJhbmFjbyIsIkNsw61uaWNhIE9jY2lkZW50ZSIsIkZ1bmRhY2nDs24gVmFsbGUgZGVsIExpbGkiXSwiaWF0IjoxNzk0MDA5NTU2LCJleHAiOjE4MjU1NDU1NTYsImlzcyI6ImdvZHQtYmFja2VuZCJ9.384STlmBvSwe2Z4jjCiZfXJftaCg3Oi0wLI1fLnzDI4"
+    },
+    "admin": {
+      "id": "a0000000-0000-0000-0000-000000000002",
+      "email": "admin@godt.gov.co",
+      "name": "Administrador del Sistema GODT",
+      "role": "ADMIN",
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDIiLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGdvZHQuZ292LmNvIiwibmFtZSI6IkFkbWluaXN0cmFkb3IgZGVsIFNpc3RlbWEgR09EVCIsImluc3RpdHV0aW9uYWxJcHMiOlsiSG9zcGl0YWwgVW5pdmVyc2l0YXJpbyBkZWwgVmFsbGUiLCJDbMOtbmljYSBJbWJhbmFjbyJdLCJpYXQiOjE3OTQwMDk1NTYsImV4cCI6MTgyNTU0NTU1NiwiaXNzIjoiZ29kdC1iYWNrZW5kIn0.oCzbbOo0cCVuX2kw1KYQLz5zvNeaXc1RfN94x2YcyJg"
+    }
+  }
+}
