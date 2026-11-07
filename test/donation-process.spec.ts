@@ -85,12 +85,25 @@ describe("DonationProcess Use Cases (Phase A)", () => {
         if (id === mockDonor.id) return Promise.resolve(mockDonor);
         return Promise.resolve(null);
       }),
+      create: jest.fn().mockImplementation(async (donorInput, actorUserId) => {
+        return {
+          id: `donor-created-${Date.now()}`,
+          ...donorInput,
+          anthropometry: null,
+          bloodGroup: donorInput.bloodGroup ?? null,
+          rhFactor: donorInput.rhFactor ?? null,
+          clinicalData: null,
+          createdById: actorUserId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }),
     };
 
     mockRepository = {
       create: jest.fn().mockImplementation(
         async (
-          input: CreateDonationProcessInput,
+          input: CreateDonationProcessInput & { donorId: string },
           openedById: string,
           processCode: string,
         ): Promise<DonationProcess> => {
@@ -379,6 +392,75 @@ describe("DonationProcess Use Cases (Phase A)", () => {
           adminUser,
         ),
       ).rejects.toThrow(DonationProcessConflictError);
+    });
+
+    it("Caso 2: debe permitir abrir un proceso desde cero sin donorId previo creando el registro provisional del donante", async () => {
+      const useCase = new CreateDonationProcessUseCase(
+        mockRepository,
+        mockDonorRepository as DonorRecordRepository,
+        mockAuditPort,
+      );
+
+      const process = await useCase.execute(
+        {
+          primaryIpsName: "Hospital Universitario del Valle",
+        },
+        coordinatorUser,
+      );
+
+      expect(process.id).toBeDefined();
+      expect(process.processCode).toMatch(/^PROC-\d{4}-\d{4}$/);
+      expect(process.status).toBe("EN_VALORACION");
+      expect(process.donorId).toMatch(/^donor-created-/);
+      expect(mockDonorRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originatingIpsName: "Hospital Universitario del Valle",
+          clinicalService: "UCI / Urgencias (Valoración preliminar)",
+          fullName: "Donante en valoración preliminar",
+          status: "EN_VALORACION",
+        }),
+        coordinatorUser.userId,
+      );
+      expect(auditLogs).toContainEqual(
+        expect.objectContaining({
+          action: "DONOR_CREATED",
+          entityType: "DONOR_RECORD",
+        }),
+      );
+    });
+
+    it("Caso 2: debe permitir abrir un proceso desde cero especificando datos iniciales del donante", async () => {
+      const useCase = new CreateDonationProcessUseCase(
+        mockRepository,
+        mockDonorRepository as DonorRecordRepository,
+        mockAuditPort,
+      );
+
+      const process = await useCase.execute(
+        {
+          primaryIpsName: "Hospital Universitario del Valle",
+          donor: {
+            fullName: "Carlos Alberto Vélez",
+            documentNumber: "71234567",
+            clinicalService: "UCI Neurocríticos",
+            bloodGroup: "O",
+            rhFactor: "+",
+          },
+        },
+        coordinatorUser,
+      );
+
+      expect(process.id).toBeDefined();
+      expect(mockDonorRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fullName: "Carlos Alberto Vélez",
+          documentNumber: "71234567",
+          clinicalService: "UCI Neurocríticos",
+          bloodGroup: "O",
+          rhFactor: "+",
+        }),
+        coordinatorUser.userId,
+      );
     });
   });
 

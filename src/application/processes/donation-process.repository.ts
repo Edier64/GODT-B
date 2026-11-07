@@ -11,7 +11,7 @@ import {
 
 export interface DonationProcessRepository {
   create(
-    input: CreateDonationProcessInput,
+    input: CreateDonationProcessInput & { donorId: string },
     openedById: string,
     processCode: string,
   ): Promise<DonationProcess>;

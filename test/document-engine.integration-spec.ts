@@ -222,4 +222,109 @@ describeIntegration("Document engine persistence", () => {
     expect(stored?.currentRevision?.documentInstanceId).toBe(instanceId);
     expect([3, 4]).toContain(stored?.currentRevision?.revisionNumber);
   });
+
+  it("Caso 1 regression: preserves existing provenance when saving revision without sourceProvenance", async () => {
+    const repository = new PrismaDocumentEngineRepository(prisma as never);
+    const access = {
+      userId,
+      isAdmin: true,
+      institutionalIps: [],
+    };
+
+    // Step 1: Save a revision WITH provenance and canonicalFieldKey
+    await repository.saveRevision({
+      instanceId,
+      actorUserId: userId,
+      access,
+      responseData: { code: "with-provenance" },
+      sourceProvenance: [
+        {
+          fieldPath: "code",
+          sourceKind: "MANUAL",
+          canonicalFieldKey: "donor.code",
+        },
+      ],
+      correlationId: `caso1-with-prov-${Date.now()}`,
+    });
+
+    const midStored = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: {
+        currentRevision: {
+          include: { provenance: true },
+        },
+      },
+    });
+    expect(midStored?.currentRevision?.provenance.length).toBe(1);
+    expect(midStored?.currentRevision?.provenance[0].canonicalFieldKey).toBe(
+      "donor.code",
+    );
+
+    // Step 2: Save subsequent revision WITHOUT sourceProvenance payload (omitted)
+    await repository.saveRevision({
+      instanceId,
+      actorUserId: userId,
+      access,
+      responseData: { code: "inherited-provenance" },
+      correlationId: `caso1-inherit-${Date.now()}`,
+    });
+
+    const stored = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: {
+        currentRevision: {
+          include: { provenance: true },
+        },
+      },
+    });
+
+    expect(stored?.currentRevision?.provenance.length).toBe(1);
+    expect(stored?.currentRevision?.provenance[0].fieldPath).toBe("code");
+    expect(stored?.currentRevision?.provenance[0].sourceKind).toBe("MANUAL");
+    expect(stored?.currentRevision?.provenance[0].canonicalFieldKey).toBe(
+      "donor.code",
+    );
+  });
+
+  it("Caso 4 regression: listTemplates returns official templates with published versions, without duplicates or PENDING_HOMOLOGATION", async () => {
+    const { seedOfficialTemplates } = await import(
+      "../src/application/document-engine/official-template-definitions"
+    );
+
+    // Seeding is idempotent
+    const count1 = await seedOfficialTemplates(prisma as never, userId);
+    const count2 = await seedOfficialTemplates(prisma as never, userId);
+    expect(count1).toBe(19);
+    expect(count2).toBe(19);
+
+    const repository = new PrismaDocumentEngineRepository(prisma as never);
+    const access = {
+      userId,
+      isAdmin: false,
+      institutionalIps: ["Hospital Universitario del Valle"],
+    };
+
+    const templates = (await repository.listTemplates(access)) as Array<{
+      templateCode: string;
+      name: string;
+      category: string;
+      versions: Array<{ id: string; status: string }>;
+    }>;
+
+    expect(templates.length).toBeGreaterThanOrEqual(19);
+
+    for (const t of templates) {
+      // Must have at least 1 published version visible to non-admin
+      expect(t.versions.length).toBeGreaterThan(0);
+      expect(t.versions[0].status).toBe("PUBLISHED");
+
+      // No duplicated test suffixes
+      expect(t.templateCode).not.toMatch(/^TPL-/);
+      expect(t.templateCode).not.toMatch(/-\d{4}$/);
+
+      // Positions 20 to 23 must NOT exist in the executable template catalog
+      expect(t.category).not.toBe("PENDING_HOMOLOGATION");
+      expect(t.templateCode).not.toMatch(/POS_NORMATIVA_/i);
+    }
+  });
 });

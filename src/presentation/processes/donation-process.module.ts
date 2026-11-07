@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
 import { DonationProcessController } from "./donation-process.controller";
 import { CreateDonationProcessUseCase } from "../../application/processes/create-donation-process.use-case";
 import { GetDonationProcessUseCase } from "../../application/processes/get-donation-process.use-case";
@@ -7,6 +8,7 @@ import { ListDonationProcessesUseCase } from "../../application/processes/list-d
 import { UpdateDonationProcessUseCase } from "../../application/processes/update-donation-process.use-case";
 import { AddProcessInstitutionUseCase } from "../../application/processes/add-institution.use-case";
 import { AddProcessParticipantUseCase } from "../../application/processes/add-participant.use-case";
+import { GetDashboardSummaryUseCase } from "../../application/processes/get-dashboard-summary.use-case";
 import { PrismaDonationProcessRepository } from "../../infrastructure/processes/prisma-donation-process.repository";
 import { DONATION_PROCESS_REPOSITORY } from "../../application/processes/donation-process.repository";
 import { PrismaDonorRecordRepository } from "../../infrastructure/donors/prisma-donor-record.repository";
@@ -17,7 +19,7 @@ import { PrismaProcessPackageRepository } from "../../infrastructure/packages/pr
 import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-package.repository";
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PrismaModule],
   controllers: [DonationProcessController],
   providers: [
     CreateDonationProcessUseCase,
@@ -26,6 +28,7 @@ import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-p
     UpdateDonationProcessUseCase,
     AddProcessInstitutionUseCase,
     AddProcessParticipantUseCase,
+    GetDashboardSummaryUseCase,
     PrismaDonationProcessRepository,
     PrismaDonorRecordRepository,
     PrismaAuditEventAdapter,

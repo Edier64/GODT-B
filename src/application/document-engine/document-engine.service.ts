@@ -15,6 +15,7 @@ import { DocumentDefinitionValidator } from "./document-definition.validator";
 type ProvenanceInput = {
   fieldPath: string;
   sourceKind: string;
+  canonicalFieldKey?: string;
   sourceEntityId?: string;
   sourceDocumentId?: string;
   ocrFieldId?: string;
@@ -163,7 +164,7 @@ export class DocumentEngineService {
       ...input,
       correlationId: randomUUID(),
       responseData: input.responseData as Prisma.InputJsonValue,
-      sourceProvenance: this.mapProvenance(input.sourceProvenance),
+      sourceProvenance: this.mapProvenance(input.sourceProvenance) ?? [],
     });
   }
 
@@ -213,17 +214,20 @@ export class DocumentEngineService {
   private mapProvenance(values: ProvenanceInput[] | undefined): Array<{
     fieldPath: string;
     sourceKind: string;
+    canonicalFieldKey?: string;
     sourceEntityId?: string;
     sourceDocumentId?: string;
     ocrFieldId?: string;
     conflictStatus?: string;
     conflictDetails?: Prisma.InputJsonValue;
     sourceValue?: Prisma.InputJsonValue;
-  }> {
-    return (values ?? []).map((value) => {
+  }> | undefined {
+    if (values === undefined) return undefined;
+    return values.map((value) => {
       return {
         fieldPath: value.fieldPath,
         sourceKind: value.sourceKind,
+        canonicalFieldKey: this.optionalString(value.canonicalFieldKey),
         sourceEntityId: this.optionalString(value.sourceEntityId),
         sourceDocumentId: this.optionalString(value.sourceDocumentId),
         ocrFieldId: this.optionalString(value.ocrFieldId),

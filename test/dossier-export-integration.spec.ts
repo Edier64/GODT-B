@@ -183,30 +183,38 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
       },
     });
 
-    // 6. Crear plantillas y documentos en las 23 posiciones
+    // 6. Crear plantillas y documentos en las posiciones oficiales (1 a 19); posiciones 20 a 23 permanecen sin plantilla
     for (const pos of OFFICIAL_REGIONAL_3_POSITIONS) {
-      const template = await prisma.documentTemplate.create({
-        data: {
-          templateCode: `TPL-${pos.documentCode}-${testSuffix.slice(-4)}`,
-          name: pos.title,
-          category: "OFFICIAL",
-          status: "ACTIVE",
-        },
-      });
+      let templateId: string | undefined;
+      let templateVersionId: string | undefined;
 
-      const templateVersion = await prisma.templateVersion.create({
-        data: {
-          templateId: template.id,
-          versionNumber: "1.0.0",
-          effectiveFrom: new Date(),
-          status: "PUBLISHED",
-          jsonSchema: { type: "object", properties: {} },
-          uiSchema: {},
-          mappingConfig: [],
-          createdById: authorizedUser.id,
-          authorizedById: authorizedUser.id,
-        },
-      });
+      if (pos.category !== "PENDING_HOMOLOGATION") {
+        const template = await prisma.documentTemplate.create({
+          data: {
+            templateCode: `TPL-${pos.documentCode}-${testSuffix.slice(-4)}`,
+            name: pos.title,
+            category: "OFFICIAL",
+            status: "ACTIVE",
+          },
+        });
+
+        const templateVersion = await prisma.templateVersion.create({
+          data: {
+            templateId: template.id,
+            versionNumber: "1.0.0",
+            effectiveFrom: new Date(),
+            status: "PUBLISHED",
+            jsonSchema: { type: "object", properties: {} },
+            uiSchema: {},
+            mappingConfig: [],
+            createdById: authorizedUser.id,
+            authorizedById: authorizedUser.id,
+          },
+        });
+
+        templateId = template.id;
+        templateVersionId = templateVersion.id;
+      }
 
       const pDoc = await prisma.processDocument.create({
         data: {
@@ -216,6 +224,8 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
           title: pos.title,
           category: pos.category,
           orderIndex: pos.orderIndex,
+          templateId,
+          templateVersionId,
           applicabilityStatus:
             pos.positionNumber === 17 ? "NO_APLICA" : "APLICA",
           nonApplicabilityReason:
@@ -230,8 +240,8 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
         const instance = await prisma.documentInstance.create({
           data: {
             donorId: testDonor.id,
-            templateId: template.id,
-            templateVersionId: templateVersion.id,
+            templateId: templateId!,
+            templateVersionId: templateVersionId!,
             documentCode: pos.documentCode,
             status: "LIBERADO",
             createdById: authorizedUser.id,
@@ -273,7 +283,7 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
           data: {
             donorId: testDonor.id,
             processId: testProcess.id,
-            templateVersionId: templateVersion.id,
+            templateVersionId: templateVersionId!,
             documentInstanceId: instance.id,
             documentCode: pos.documentCode,
             versionNumber: 1,
@@ -379,7 +389,14 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
       await prisma.donationProcess.deleteMany({ where: { id: testProcess?.id } });
       await prisma.donorRecord.deleteMany({ where: { id: testDonor?.id } });
       await prisma.templateVersion.deleteMany({ where: { createdById: authorizedUser?.id } });
-      await prisma.documentTemplate.deleteMany({ where: { templateCode: { contains: testSuffix } } });
+      await prisma.documentTemplate.deleteMany({
+        where: {
+          OR: [
+            { templateCode: { contains: testSuffix } },
+            { templateCode: { contains: testSuffix.slice(-4) } },
+          ],
+        },
+      });
       await prisma.processPackageVersion.deleteMany({ where: { packageId: testPackage?.id } });
       await prisma.processPackage.deleteMany({ where: { id: testPackage?.id } });
       await prisma.systemUser.deleteMany({

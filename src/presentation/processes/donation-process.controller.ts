@@ -21,6 +21,7 @@ import { ListDonationProcessesUseCase } from "../../application/processes/list-d
 import { UpdateDonationProcessUseCase } from "../../application/processes/update-donation-process.use-case";
 import { AddProcessInstitutionUseCase } from "../../application/processes/add-institution.use-case";
 import { AddProcessParticipantUseCase } from "../../application/processes/add-participant.use-case";
+import { GetDashboardSummaryUseCase } from "../../application/processes/get-dashboard-summary.use-case";
 import {
   CreateDonationProcessDto,
   CreateProcessInstitutionDto,
@@ -47,6 +48,7 @@ export class DonationProcessController {
     private readonly updateProcess: UpdateDonationProcessUseCase,
     private readonly addInstitution: AddProcessInstitutionUseCase,
     private readonly addParticipant: AddProcessParticipantUseCase,
+    private readonly getDashboardSummary: GetDashboardSummaryUseCase,
   ) {}
 
   @Post()
@@ -56,6 +58,12 @@ export class DonationProcessController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.run(() => this.createProcess.execute(dto, user));
+  }
+
+  @Get("dashboard/summary")
+  @ApiOperation({ summary: "Obtener métricas agregadas del tablero de control" })
+  async summary(@CurrentUser() user: AuthenticatedUser) {
+    return this.run(() => this.getDashboardSummary.execute(user));
   }
 
   @Get()
