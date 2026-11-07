@@ -18,7 +18,44 @@ export class GetSourceDocumentUseCase {
 
   async list(donorId: string, actor: AuthenticatedUser) {
     await this.assertAccess(donorId, actor);
-    return this.documents.findByDonorId(donorId);
+    return this.prisma.sourceDocument.findMany({
+      where: { donorId },
+      include: {
+        ocrJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: { extractedFields: true },
+        },
+      },
+      orderBy: { uploadedAt: "desc" },
+    });
+  }
+
+  async listByProcessId(processId: string, actor: AuthenticatedUser) {
+    const process = await this.prisma.donationProcess.findUnique({
+      where: { id: processId },
+      select: { id: true, donorId: true, primaryIpsName: true },
+    });
+    if (!process) throw new DocumentNotFoundError();
+    if (
+      actor.role !== "ADMIN" &&
+      !actor.institutionalIps?.includes(process.primaryIpsName)
+    ) {
+      throw new DocumentAccessDeniedError();
+    }
+    return this.prisma.sourceDocument.findMany({
+      where: {
+        OR: [{ processId }, { donorId: process.donorId }],
+      },
+      include: {
+        ocrJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: { extractedFields: true },
+        },
+      },
+      orderBy: { uploadedAt: "desc" },
+    });
   }
 
   async get(id: string, actor: AuthenticatedUser) {

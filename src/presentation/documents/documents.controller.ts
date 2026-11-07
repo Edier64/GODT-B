@@ -82,6 +82,56 @@ export class DocumentsController {
     }
   }
 
+  @Post("processes/:processId/documents")
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: { type: "string", format: "binary" },
+        documentCategory: { type: "string", example: "CLINICAL_SOURCE" },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }),
+  )
+  @ApiOperation({ summary: "Cargar documento fuente al proceso de donación" })
+  async createForProcess(
+    @Param("processId") processId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body("documentCategory") documentCategory: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    try {
+      if (!file)
+        throw new DocumentValidationError("A document file is required");
+      return await this.upload.execute({
+        processId,
+        uploadedById: actor.userId,
+        originalFilename: file.originalname,
+        declaredMimeType: file.mimetype,
+        buffer: file.buffer,
+        documentCategory: documentCategory || "CLINICAL_SOURCE",
+        actor,
+      });
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+  }
+
+  @Get("processes/:processId/documents")
+  @ApiOperation({ summary: "Listar documentos fuente del proceso de donación" })
+  listForProcess(
+    @Param("processId") processId: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.documents.listByProcessId(processId, actor).catch((error: unknown) => {
+      throw this.toHttp(error);
+    });
+  }
+
   @Get("donors/:donorId/documents")
   list(
     @Param("donorId") donorId: string,
