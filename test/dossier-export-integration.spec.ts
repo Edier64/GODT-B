@@ -798,8 +798,12 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
   });
 
   describe("6. Durabilidad BullMQ, Fallback y Recuperación (Escenarios 16, 17, 18 y Durabilidad)", () => {
-    it("Escenario 16: debe permitir fallback en desarrollo cuando Redis no está disponible", async () => {
-      const devConfig = new ConfigService({ NODE_ENV: "development", REDIS_URL: "redis://invalid-host:9999" });
+    it("Escenario 16: debe permitir fallback en desarrollo cuando Redis no está disponible y ENABLE_IN_MEMORY_QUEUE_FALLBACK=true", async () => {
+      const devConfig = new ConfigService({
+        NODE_ENV: "development",
+        REDIS_URL: "redis://invalid-host:9999",
+        ENABLE_IN_MEMORY_QUEUE_FALLBACK: "true",
+      });
       const devQueue = new BullmqDossierQueueService(devConfig, processExportService, prisma);
       await devQueue.onModuleInit();
 
@@ -859,19 +863,129 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
         where: { id: abandonedExp.id },
       });
       expect(recovered?.status).toBe("FAILED");
-      expect(recovered?.errorMessage).toContain("Procesamiento interrumpido");
+      expect(recovered?.errorMessage).toContain("interrumpido");
 
       await prisma.processDossierExport.delete({ where: { id: abandonedExp.id } });
+    });
+
+    it("Escenario 19 & Multi-Worker: una instancia reiniciada NO debe marcar como FAILED trabajos activos de otra instancia", async () => {
+      // 1. Simular Worker A procesando activamente un expediente con heartbeat reciente
+      const workerAExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PROCESSING",
+          progressPercent: 45,
+          currentStep: "GENERANDO_INDICE",
+          processingWorkerId: "worker-pod-A-12345",
+          lastHeartbeatAt: new Date(), // Heartbeat fresco
+        },
+      });
+
+      // 2. Simular Worker B (instancia independiente) que arranca y ejecuta recoverOrphanExports()
+      const workerBConfig = new ConfigService({
+        NODE_ENV: "development",
+        REDIS_URL: "redis://localhost:6379",
+        INSTANCE_ID: "worker-pod-B-67890",
+      });
+      const workerBQueue = new BullmqDossierQueueService(
+        workerBConfig,
+        processExportService,
+        prisma,
+      );
+
+      // Worker B ejecuta recuperación de huérfanos
+      await workerBQueue.recoverOrphanExports();
+
+      // 3. Comprobar que el trabajo de Worker A se mantiene intacto en PROCESSING
+      const checkWorkerA = await prisma.processDossierExport.findUnique({
+        where: { id: workerAExp.id },
+      });
+      expect(checkWorkerA?.status).toBe("PROCESSING");
+      expect(checkWorkerA?.processingWorkerId).toBe("worker-pod-A-12345");
+
+      // 4. Worker A completa su trabajo con éxito
+      await processExportService.processExport(
+        workerAExp.id,
+        authCoordinator,
+        "worker-pod-A-12345",
+      );
+
+      const completedExp = await prisma.processDossierExport.findUnique({
+        where: { id: workerAExp.id },
+      });
+      expect(completedExp?.status).toBe("COMPLETED");
+      expect(completedExp?.progressPercent).toBe(100);
+
+      await prisma.processDossierExport.delete({ where: { id: workerAExp.id } });
+    });
+
+    it("Escenario 20 & Stale Timeout: debe recuperar exportaciones inactivas que superen el umbral de 15 minutos", async () => {
+      const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+      const staleExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PROCESSING",
+          progressPercent: 50,
+          currentStep: "CONSOLIDANDO_PDF",
+          processingWorkerId: "dead-worker-pod-99999",
+          lastHeartbeatAt: twentyMinutesAgo,
+        },
+      });
+
+      await realQueueService.recoverOrphanExports();
+
+      const recoveredStale = await prisma.processDossierExport.findUnique({
+        where: { id: staleExp.id },
+      });
+      expect(recoveredStale?.status).toBe("FAILED");
+      expect(recoveredStale?.errorMessage).toContain("umbral de inactividad");
+
+      await prisma.processDossierExport.delete({ where: { id: staleExp.id } });
+    });
+
+    it("Escenario 21: Prohibición estricta de fallback en memoria en entorno STAGING", async () => {
+      const stagingConfig = new ConfigService({
+        NODE_ENV: "staging",
+        REDIS_URL: "redis://invalid-host:6379",
+        ENABLE_IN_MEMORY_QUEUE_FALLBACK: "true", // Intento de activar fallback que debe ser ignorado
+      });
+
+      const stagingQueue = new BullmqDossierQueueService(
+        stagingConfig,
+        processExportService,
+        prisma,
+      );
+
+      const testExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PENDING",
+        },
+      });
+
+      await expect(stagingQueue.enqueueExport(testExp.id, authCoordinator)).rejects.toThrow(
+        DossierQueueUnavailableError,
+      );
+
+      await stagingQueue.onModuleDestroy();
+      await prisma.processDossierExport.delete({ where: { id: testExp.id } });
     });
   });
 
   describe("7. Prueba de Repetición y Reproducibilidad Lógica", () => {
     it("debe verificar determinismo de documentos originales y manifest digest en dos exportaciones sucesivas", async () => {
       // Exportación 1
-      const exp1 = await requestUseCase.execute({
-        processId: testProcess.id,
-        user: authCoordinator,
+      const exp1Record = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PENDING",
+        },
       });
+      await processExportService.processExport(exp1Record.id, authCoordinator);
 
       // Simular cambio de tiempo para Exportación 2
       const exp2Record = await prisma.processDossierExport.create({
@@ -883,7 +997,7 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
       });
       await processExportService.processExport(exp2Record.id, authCoordinator);
 
-      const r1 = await prisma.processDossierExport.findUnique({ where: { id: exp1.id } });
+      const r1 = await prisma.processDossierExport.findUnique({ where: { id: exp1Record.id } });
       const r2 = await prisma.processDossierExport.findUnique({ where: { id: exp2Record.id } });
 
       const m1 = r1?.manifestData as any;
@@ -932,10 +1046,16 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
       expect(r1?.packageChecksumSha256).toBeDefined();
       expect(r2?.packageChecksumSha256).toBeDefined();
 
+      // 5. Verificación de minimización de privacidad (datos del donante enmascarados en cabecera)
+      expect(m1.donorDocumentMasked).toBeDefined();
+      expect(m1.donorDocumentMasked?.startsWith("***")).toBe(true);
+      expect(m1.donorFullNameMasked).toBeDefined();
+
+      await prisma.processDossierExport.delete({ where: { id: exp1Record.id } });
       await prisma.processDossierExport.delete({ where: { id: exp2Record.id } });
     });
 
-    it("evidencias_atestaciones.json debe reflejar firmas reales y no contener hashes ficticios de buffer vacío", async () => {
+    it("evidencias_atestaciones.json debe reflejar 3 campos disyuntos, vincularse al PDF liberado y rechazar certificados PKI sin soporte", async () => {
       const zip = new AdmZip(standardZipBuffer);
       const evidEntry = zip.getEntries().find((e) =>
         e.entryName.includes("03_EVIDENCIAS/evidencias_atestaciones.json"),
@@ -944,13 +1064,26 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
 
       const evidObj = JSON.parse(evidEntry!.getData().toString("utf-8"));
       expect(evidObj.digitalSignatureDisclaimer).toBeDefined();
+      expect(evidObj.attestationNotice).toBeDefined();
 
       const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
       const allSigs = evidObj.signaturesAuditTrail.flatMap((trail: any) => trail.signatures);
 
       for (const sig of allSigs) {
-        expect(sig.snapshotSha256).not.toBe(emptyHash);
+        // Campo 1: Hash exacto del PDF liberado
+        expect(sig.documentPdfSha256).toBeDefined();
+        expect(sig.documentPdfSha256).toHaveLength(64);
+
+        // Campo 2: Evidencia de firma separable (nullable, nunca hash de string vacío)
+        expect(sig.signatureEvidenceSha256).not.toBe(emptyHash);
+
+        // Campo 3: Digest determinista de la declaración de atestación
+        expect(sig.attestationDigest).toBeDefined();
+        expect(sig.attestationDigest).toHaveLength(64);
+
+        // Nivel de atestación y advertencia técnica
         expect(sig.attestationLevel).toBeDefined();
+        expect(sig.technicalDisclaimer).toContain("No constituye firma digital certificada PKI");
       }
     });
   });

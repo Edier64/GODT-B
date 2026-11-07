@@ -1,6 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import { createHash } from "crypto";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import {
+  canonicalJsonSerialize,
   computeCanonicalManifestDigest,
   DossierDocumentItem,
   DossierManifest,
@@ -104,6 +106,7 @@ export class BuildIntegrityManifestService {
 
       // Buscar último PDF asociado
       const latestPdf = instance ? latestPdfByInstanceId.get(instance.id) : undefined;
+      const releasedPdfSha256 = latestPdf?.sha256Hash || "";
 
       // Extraer firmas con validación estricta de hash de atestación
       const signatures: DossierSignatureItem[] = [];
@@ -116,10 +119,30 @@ export class BuildIntegrityManifestService {
               !rawHash ||
               rawHash === "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
+            const signatureEvidenceSha256 = isEmptyHash ? null : rawHash;
+
             const attestationLevel =
               sig.signatureType === "DIGITAL_CERTIFICADA"
                 ? "DIGITAL_CERTIFICADA_BLOQUEADA"
+                : sig.signatureType === "ELECTRONICA_SIMPLE"
+                ? "FIRMA_ELECTRONICA_SIMPLE"
                 : "ATESTA_MANUAL_INTERNA";
+
+            const signedAtIso = sig.signedAt ? sig.signedAt.toISOString() : null;
+
+            // Digest canónico de la declaración de atestación
+            const attestationStatement = {
+              documentPdfSha256: releasedPdfSha256,
+              participantId: part.id,
+              signedAt: signedAtIso,
+              signerDocument: part.documentNumber,
+              signerName: part.fullName,
+              signerRole: part.signerRole,
+              signatureType: sig.signatureType,
+            };
+            const attestationDigest = createHash("sha256")
+              .update(Buffer.from(canonicalJsonSerialize(attestationStatement), "utf-8"))
+              .digest("hex");
 
             signatures.push({
               participantId: part.id,
@@ -127,9 +150,12 @@ export class BuildIntegrityManifestService {
               signerName: part.fullName,
               signerDocument: part.documentNumber,
               signatureType: sig.signatureType,
-              signedAt: sig.signedAt ? sig.signedAt.toISOString() : null,
-              snapshotSha256: isEmptyHash ? null : rawHash,
-              hasCryptographicSignature: !isEmptyHash,
+              signedAt: signedAtIso,
+              documentPdfSha256: releasedPdfSha256,
+              signatureEvidenceSha256,
+              attestationDigest,
+              snapshotSha256: signatureEvidenceSha256,
+              hasCryptographicSignature: signatureEvidenceSha256 !== null,
               attestationLevel,
             });
           }
@@ -204,10 +230,22 @@ export class BuildIntegrityManifestService {
       }
     }
 
-    // 4. Armar Manifiesto Base
+    // 4. Armar Manifiesto Base (con minimización de privacidad de datos del donante)
     const userRecord = await this.prisma.systemUser.findUnique({
       where: { id: input.user.userId },
     });
+
+    const rawDonorDoc = process.donor?.documentNumber;
+    const donorDocumentMasked = rawDonorDoc
+      ? `***${rawDonorDoc.slice(-4)}`
+      : null;
+    const rawDonorName = process.donor?.fullName;
+    const donorFullNameMasked = rawDonorName
+      ? rawDonorName
+          .split(" ")
+          .map((w) => (w.length > 0 ? `${w[0]}***` : ""))
+          .join(" ")
+      : null;
 
     const manifest: DossierManifest = {
       manifestVersion: "1.0.0",
@@ -215,6 +253,8 @@ export class BuildIntegrityManifestService {
       processCode: process.processCode,
       donorId: process.donorId,
       donorRndCode: process.donor.rndCode,
+      donorDocumentMasked,
+      donorFullNameMasked,
       primaryIpsName: process.primaryIpsName,
       generatedAt: new Date().toISOString(),
       generatedBy: {
@@ -226,7 +266,7 @@ export class BuildIntegrityManifestService {
       packageVersion: process.packageVersion?.versionNumber
         ? `v${process.packageVersion.versionNumber}`
         : "Piloto Regional 3 v1.0.0",
-      systemVersion: "GODT Regional 3 v1.0.0 (Fase E.1)",
+      systemVersion: "GODT Regional 3 v1.0.0 (Fase E.1.1)",
       summary: {
         totalPositions: documentsList.length,
         normativePositions: 19,
@@ -283,9 +323,13 @@ export class BuildIntegrityManifestService {
           signerDocument: sig.signerDocument,
           signatureType: sig.signatureType,
           signedAt: sig.signedAt,
-          snapshotSha256: sig.snapshotSha256,
+          documentPdfSha256: sig.documentPdfSha256,
+          signatureEvidenceSha256: sig.signatureEvidenceSha256,
+          attestationDigest: sig.attestationDigest,
           hasCryptographicSignature: sig.hasCryptographicSignature,
           attestationLevel: sig.attestationLevel,
+          technicalDisclaimer:
+            "Evidencia de atestación bajo juramento clínico en plataforma GODT Regional 3. No constituye firma digital certificada PKI bajo Ley 527 de 1999.",
         })),
       }));
 
@@ -302,9 +346,9 @@ export class BuildIntegrityManifestService {
       signaturesAuditTrail: validSignaturesTrail,
       custodyChainsAuditTrail: custodyEventsByDoc,
       attestationNotice:
-        "Las atestaciones documentadas corresponden a declaraciones y firmas manuscritas o electrónicas simples emitidas bajo juramento en el marco clínico de GODT Regional 3.",
+        "Las atestaciones documentadas corresponden a declaraciones y firmas manuscritas o electrónicas simples emitidas bajo juramento en el marco clínico de GODT Regional 3, garantizando integridad técnica verificable y trazabilidad documental.",
       digitalSignatureDisclaimer:
-        "AVISO TÉCNICO-LEGAL: La modalidad DIGITAL_CERTIFICADA (PKI acreditado por ONAC) se encuentra actualmente bloqueada hasta la suscripción con el prestador de certificación digital. Ninguna firma interna debe ser tratada como certificado digital de clave pública hasta su homologación formal.",
+        "AVISO TÉCNICO-LEGAL: La modalidad DIGITAL_CERTIFICADA (PKI acreditado por ONAC) se encuentra actualmente deshabilitada hasta la suscripción formal con una entidad de certificación digital abierta. Ninguna firma interna debe ser tratada como certificado digital de clave pública hasta su homologación.",
     };
   }
 }

@@ -856,6 +856,8 @@ model ProcessDossierExport {
   zipSha256                  String?          @map("zip_sha256") @db.Char(64)
   packageChecksumSha256      String?          @map("package_checksum_sha256") @db.Char(64)
   manifestDigest             String?          @map("manifest_digest") @db.Char(64)
+  processingWorkerId         String?          @map("processing_worker_id") @db.VarChar(100)
+  lastHeartbeatAt            DateTime?        @map("last_heartbeat_at") @db.Timestamptz(6)
   zipSizeBytes               BigInt?          @map("zip_size_bytes")
   manifestData               Json?            @map("manifest_data")
   errorMessage               String?          @map("error_message") @db.Text
