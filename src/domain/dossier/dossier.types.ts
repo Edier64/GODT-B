@@ -54,7 +54,10 @@ export interface DossierSignatureItem {
   signerDocument?: string | null;
   signatureType: string;
   signedAt?: string | null;
-  snapshotSha256: string | null;
+  documentPdfSha256: string;
+  signatureEvidenceSha256: string | null;
+  attestationDigest: string;
+  snapshotSha256?: string | null;
   hasCryptographicSignature: boolean;
   attestationLevel: "ATESTA_MANUAL_INTERNA" | "FIRMA_ELECTRONICA_SIMPLE" | "DIGITAL_CERTIFICADA_BLOQUEADA";
 }
@@ -121,6 +124,8 @@ export interface DossierManifest {
   processCode: string;
   donorId: string;
   donorRndCode?: string | null;
+  donorDocumentMasked?: string | null;
+  donorFullNameMasked?: string | null;
   primaryIpsName: string;
   generatedAt: string;
   generatedBy: {
@@ -190,10 +195,13 @@ export interface HardenedVerificationReport {
 }
 
 /**
- * Serialización determinista y canónica de estructuras JSON (RFC 8785).
- * - Claves ordenadas recursivamente en orden alfabético.
+ * Serialización determinista y canónica de estructuras JSON conforme a RFC 8785 (JCS).
+ * - Claves ordenadas recursivamente por unidades de código UTF-16 (Sección 3.2.3).
  * - Arrays conservan su orden semántico establecido.
- * - Codificación UTF-8 normalizada.
+ * - Rechaza valores NaN e Infinity conforme a restricciones I-JSON (Sección 3.2.2.3).
+ * - Normaliza cero negativo (-0) a "0".
+ * - Serialización exacta de números según reglas ECMAScript 7.1.12.1.
+ * - Codificación UTF-8 y escapes estrictos de cadenas (comillas, barra invertida y caracteres de control U+0000 a U+001F en minúsculas).
  * - Permite excluir claves variables o autorreferenciales (ej. manifestDigest).
  */
 export function canonicalJsonSerialize(
@@ -203,20 +211,35 @@ export function canonicalJsonSerialize(
   if (obj === null || obj === undefined) {
     return "null";
   }
-  if (typeof obj === "number" || typeof obj === "boolean") {
+  if (typeof obj === "number") {
+    if (Number.isNaN(obj) || !Number.isFinite(obj)) {
+      throw new TypeError("RFC 8785: NaN e Infinity no son permitidos en JSON canónico");
+    }
+    if (Object.is(obj, -0)) {
+      return "0";
+    }
     return JSON.stringify(obj);
+  }
+  if (typeof obj === "boolean") {
+    return obj ? "true" : "false";
   }
   if (typeof obj === "string") {
     return JSON.stringify(obj);
   }
   if (Array.isArray(obj)) {
-    const items = obj.map((item) => canonicalJsonSerialize(item, excludedKeys));
+    const items = obj.map((item) =>
+      canonicalJsonSerialize(item === undefined ? null : item, excludedKeys),
+    );
     return `[${items.join(",")}]`;
   }
   if (typeof obj === "object") {
+    // Si el objeto tiene método toJSON (ej. Date), invocarlo primero
+    if (typeof obj.toJSON === "function") {
+      return canonicalJsonSerialize(obj.toJSON(), excludedKeys);
+    }
     const keys = Object.keys(obj)
-      .filter((k) => !excludedKeys.has(k))
-      .sort();
+      .filter((k) => !excludedKeys.has(k) && obj[k] !== undefined)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const pairs = keys.map((key) => {
       const val = canonicalJsonSerialize(obj[key], excludedKeys);
       return `${JSON.stringify(key)}:${val}`;
