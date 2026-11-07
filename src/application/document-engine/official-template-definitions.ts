@@ -1066,6 +1066,36 @@ export async function seedOfficialTemplates(prisma: PrismaService, adminUserId?:
     throw new Error("No active SystemUser found to authorize template seeding");
   }
 
+  // 1. Depurar plantillas de prueba o códigos temporales/duplicados huérfanos sin instancias
+  const orphanedCandidates = await prisma.documentTemplate.findMany({
+    where: {
+      OR: [
+        { templateCode: { startsWith: "TPL-" } },
+        { templateCode: { startsWith: "POS_NORMATIVA_" } },
+        { templateCode: { contains: "test-" } },
+        { templateCode: { contains: "synthetic-" } },
+        { category: "PENDING_HOMOLOGATION" },
+      ],
+    },
+    select: {
+      id: true,
+      _count: { select: { instances: true, processDocuments: true } },
+    },
+  });
+
+  const purgeableIds = orphanedCandidates
+    .filter((t) => t._count.instances === 0 && t._count.processDocuments === 0)
+    .map((t) => t.id);
+
+  if (purgeableIds.length > 0) {
+    await prisma.templateVersion.deleteMany({
+      where: { templateId: { in: purgeableIds } },
+    });
+    await prisma.documentTemplate.deleteMany({
+      where: { id: { in: purgeableIds } },
+    });
+  }
+
   let count = 0;
   for (const def of OFFICIAL_TEMPLATE_DEFINITIONS) {
     const definitionPayload = {

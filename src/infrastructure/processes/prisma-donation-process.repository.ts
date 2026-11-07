@@ -19,7 +19,7 @@ export class PrismaDonationProcessRepository
   constructor(private readonly prisma: PrismaService) {}
 
   async create(
-    input: CreateDonationProcessInput,
+    input: CreateDonationProcessInput & { donorId: string },
     openedById: string,
     processCode: string,
   ): Promise<DonationProcess> {

@@ -121,11 +121,69 @@ export class CreateProcessParticipantDto {
   systemUserId?: string;
 }
 
+export class InitialDonorDto {
+  @ApiPropertyOptional({
+    description: "Código RND o identificador de alerta (generado si se omite)",
+  })
+  @IsOptional()
+  @IsString()
+  rndCode?: string;
+
+  @ApiPropertyOptional({
+    description: "Nombre completo del donante (o provisional si no está identificado)",
+  })
+  @IsOptional()
+  @IsString()
+  fullName?: string;
+
+  @ApiPropertyOptional({
+    description: "Número de documento o identificación provisional",
+  })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @ApiPropertyOptional({
+    description: "Servicio clínico de ingreso (UCI, Urgencias, etc.)",
+  })
+  @IsOptional()
+  @IsString()
+  clinicalService?: string;
+
+  @ApiPropertyOptional({
+    description: "IPS generadora (por defecto la IPS primaria del proceso)",
+  })
+  @IsOptional()
+  @IsString()
+  originatingIpsName?: string;
+
+  @ApiPropertyOptional({ description: "Grupo sanguíneo (A, B, AB, O)" })
+  @IsOptional()
+  @IsString()
+  bloodGroup?: string;
+
+  @ApiPropertyOptional({ description: "Factor RH (+ o -)" })
+  @IsOptional()
+  @IsString()
+  rhFactor?: string;
+}
+
 export class CreateDonationProcessDto {
-  @ApiProperty({ description: "UUID del donante asociado" })
+  @ApiPropertyOptional({
+    description: "UUID del donante asociado (si ya está registrado previamente)",
+  })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  donorId!: string;
+  donorId?: string;
+
+  @ApiPropertyOptional({
+    description: "Datos iniciales para creación de nuevo donante desde cero",
+    type: InitialDonorDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialDonorDto)
+  donor?: InitialDonorDto;
 
   @ApiProperty({ description: "IPS principal donde se apertura el proceso" })
   @IsString()

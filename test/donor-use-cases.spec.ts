@@ -62,4 +62,49 @@ describe("Donor use cases", () => {
       useCase.execute("donor-1", { userId: "other", role: "SURGEON" }),
     ).rejects.toThrow("cannot access");
   });
+
+  describe("ListDonorsQueryDto (Caso 3 regression)", () => {
+    it("transforms string query params page and pageSize into numbers", async () => {
+      const { plainToInstance } = await import("class-transformer");
+      const { validate } = await import("class-validator");
+      const { ListDonorsQueryDto } = await import(
+        "../src/presentation/donors/donor.dto"
+      );
+
+      const rawQuery = { page: "2", pageSize: "25" };
+      const dto = plainToInstance(ListDonorsQueryDto, rawQuery);
+      expect(dto.page).toBe(2);
+      expect(dto.pageSize).toBe(25);
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it("applies default pagination values when parameters are omitted", async () => {
+      const { plainToInstance } = await import("class-transformer");
+      const { validate } = await import("class-validator");
+      const { ListDonorsQueryDto } = await import(
+        "../src/presentation/donors/donor.dto"
+      );
+
+      const rawQuery = {};
+      const dto = plainToInstance(ListDonorsQueryDto, rawQuery);
+      expect(dto.page).toBe(1);
+      expect(dto.pageSize).toBe(20);
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it("rejects invalid page and pageSize numbers", async () => {
+      const { plainToInstance } = await import("class-transformer");
+      const { validate } = await import("class-validator");
+      const { ListDonorsQueryDto } = await import(
+        "../src/presentation/donors/donor.dto"
+      );
+
+      const rawQuery = { page: "0", pageSize: "200" };
+      const dto = plainToInstance(ListDonorsQueryDto, rawQuery);
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  });
 });

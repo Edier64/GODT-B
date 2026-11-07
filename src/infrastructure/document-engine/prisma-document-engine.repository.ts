@@ -32,13 +32,26 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
   listTemplates(access: DocumentAccessContext) {
     this.assertInstitutionalAccess(access);
     return this.prisma.documentTemplate.findMany({
+      where: {
+        status: "ACTIVE",
+        category: { notIn: ["PENDING_HOMOLOGATION", "TEST", "RESERVED"] },
+        NOT: [
+          { templateCode: { startsWith: "TPL-" } },
+          { templateCode: { startsWith: "POS_NORMATIVA_" } },
+          { templateCode: { contains: "test-" } },
+          { templateCode: { contains: "synthetic-" } },
+        ],
+        versions: access.isAdmin
+          ? undefined
+          : { some: { status: "PUBLISHED" } },
+      },
       include: {
         versions: {
           where: access.isAdmin ? undefined : { status: "PUBLISHED" },
           orderBy: { createdAt: "desc" },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { templateCode: "asc" },
     });
   }
 
@@ -308,11 +321,13 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
               instance.currentRevision?.responseData,
               input.responseData,
             );
-            await this.validateProvenance(
-              tx,
-              instance.donorId,
-              input.sourceProvenance,
-            );
+            if (input.sourceProvenance && input.sourceProvenance.length > 0) {
+              await this.validateProvenance(
+                tx,
+                instance.donorId,
+                input.sourceProvenance,
+              );
+            }
             const pending = await tx.documentFieldProvenance.findFirst({
               where: {
                 responseRevision: {
@@ -341,11 +356,45 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
                 createdById: input.actorUserId,
               },
             });
-            await this.createProvenance(
-              tx,
-              revision.id,
-              input.sourceProvenance,
-            );
+            if (input.sourceProvenance !== undefined) {
+              await this.createProvenance(
+                tx,
+                revision.id,
+                input.sourceProvenance,
+              );
+            } else if (instance.currentRevisionId) {
+              // Carry forward existing provenance from the current revision
+              const priorProvenance = await tx.documentFieldProvenance.findMany({
+                where: { responseRevisionId: instance.currentRevisionId },
+              });
+              if (priorProvenance.length > 0) {
+                await Promise.all(
+                  priorProvenance.map((p) =>
+                    tx.documentFieldProvenance.create({
+                      data: {
+                        responseRevisionId: revision.id,
+                        fieldPath: p.fieldPath,
+                        canonicalFieldKey: p.canonicalFieldKey,
+                        sourceKind: p.sourceKind,
+                        sourceEntityId: p.sourceEntityId,
+                        sourceDocumentId: p.sourceDocumentId,
+                        ocrFieldId: p.ocrFieldId,
+                        sourceValue: p.sourceValue as Prisma.InputJsonValue,
+                        validatedById: p.validatedById,
+                        validatedAt: p.validatedAt,
+                        conflictStatus: p.conflictStatus,
+                        conflictDetails:
+                          p.conflictDetails as Prisma.InputJsonValue,
+                        conflictResolvedById: p.conflictResolvedById,
+                        conflictResolvedAt: p.conflictResolvedAt,
+                        conflictDecision: p.conflictDecision,
+                        conflictJustification: p.conflictJustification,
+                      },
+                    }),
+                  ),
+                );
+              }
+            }
             const result = await tx.documentInstance.update({
               where: { id: instance.id },
               data: {
@@ -491,10 +540,11 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
   private async validateProvenance(
     tx: Prisma.TransactionClient,
     donorId: string,
-    values: Parameters<
+    values?: Parameters<
       DocumentEngineRepository["createInstance"]
     >[0]["sourceProvenance"],
   ) {
+    if (!values || !values.length) return;
     for (const value of values) {
       if (!SAFE_SOURCE_KINDS.has(value.sourceKind)) {
         throw new DocumentEngineValidationError(
@@ -550,11 +600,11 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
   private createProvenance(
     tx: Prisma.TransactionClient,
     revisionId: string,
-    values: Parameters<
+    values?: Parameters<
       DocumentEngineRepository["createInstance"]
     >[0]["sourceProvenance"],
   ) {
-    if (!values.length) return Promise.resolve([]);
+    if (!values || !values.length) return Promise.resolve([]);
     const fieldValues = new Map<string, Set<string>>();
     for (const value of values) {
       if (value.sourceValue === undefined) continue;
@@ -581,6 +631,7 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
             data: {
               responseRevisionId: revisionId,
               fieldPath: value.fieldPath,
+              canonicalFieldKey: value.canonicalFieldKey,
               sourceKind: value.sourceKind,
               sourceEntityId: value.sourceEntityId,
               sourceDocumentId: value.sourceDocumentId,

@@ -34,6 +34,10 @@ export class SourceProvenanceDto {
   sourceKind!: string;
 
   @IsOptional()
+  @IsString()
+  canonicalFieldKey?: string;
+
+  @IsOptional()
   @IsUUID()
   sourceEntityId?: string;
 

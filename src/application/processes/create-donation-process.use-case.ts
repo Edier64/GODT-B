@@ -43,27 +43,74 @@ export class CreateDonationProcessUseCase {
     input: CreateDonationProcessInput,
     user: AuthenticatedUser,
   ): Promise<DonationProcess> {
-    if (!input.donorId || typeof input.donorId !== "string") {
-      throw new DonationProcessValidationError("donorId es requerido");
-    }
-    if (!input.primaryIpsName || typeof input.primaryIpsName !== "string") {
+    if (!input.primaryIpsName || typeof input.primaryIpsName !== "string" || !input.primaryIpsName.trim()) {
       throw new DonationProcessValidationError("primaryIpsName es requerida");
     }
-
-    // Verificar que el donante existe
-    const donor = await this.donorRepository.findById(input.donorId);
-    if (!donor) {
-      throw new DonationProcessValidationError("El donante especificado no existe");
-    }
+    const primaryIpsName = input.primaryIpsName.trim();
 
     // Verificar alcance institucional
     if (
       user.role !== "ADMIN" &&
-      !user.institutionalIps?.includes(input.primaryIpsName)
+      !user.institutionalIps?.includes(primaryIpsName)
     ) {
       throw new DonationProcessAccessDeniedError(
         "No tiene autorización para abrir un proceso en la IPS indicada",
       );
+    }
+
+    // Resolver el donante: existente o nuevo registro preliminar/provisional
+    let resolvedDonorId = input.donorId?.trim();
+    if (resolvedDonorId) {
+      const donor = await this.donorRepository.findById(resolvedDonorId);
+      if (!donor) {
+        throw new DonationProcessValidationError(
+          "El donante especificado no existe",
+        );
+      }
+    } else {
+      // Crear un nuevo DonorRecord preliminar de forma limpia y consistente
+      const currentYear = new Date().getFullYear();
+      const provisionalRnd =
+        input.donor?.rndCode?.trim() ||
+        `RND-${currentYear}-${Date.now().toString().slice(-6)}`;
+      const originatingIps =
+        input.donor?.originatingIpsName?.trim() || primaryIpsName;
+      const clinicalService =
+        input.donor?.clinicalService?.trim() ||
+        "UCI / Urgencias (Valoración preliminar)";
+      const fullName =
+        input.donor?.fullName?.trim() || "Donante en valoración preliminar";
+      const documentNumber =
+        input.donor?.documentNumber?.trim() ||
+        `PROV-${Date.now().toString().slice(-6)}`;
+
+      const newDonor = await this.donorRepository.create(
+        {
+          rndCode: provisionalRnd,
+          originatingIpsName: originatingIps,
+          clinicalService,
+          fullName,
+          documentNumber,
+          status: "EN_VALORACION",
+          bloodGroup: input.donor?.bloodGroup?.trim(),
+          rhFactor: input.donor?.rhFactor?.trim(),
+        },
+        user.userId,
+      );
+
+      await this.audit.record({
+        actorUserId: user.userId,
+        action: "DONOR_CREATED",
+        entityType: "DONOR_RECORD",
+        entityId: newDonor.id,
+        correlationId: newDonor.id,
+        metadata: {
+          source: "donation-process-bootstrap",
+          originatingIpsName: originatingIps,
+        },
+      });
+
+      resolvedDonorId = newDonor.id;
     }
 
     // Generar o validar código legible
@@ -103,7 +150,8 @@ export class CreateDonationProcessUseCase {
     const process = await this.repository.create(
       {
         ...input,
-        primaryIpsName: input.primaryIpsName.trim(),
+        donorId: resolvedDonorId,
+        primaryIpsName,
         processCode,
         packageVersionId,
       },

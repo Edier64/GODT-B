@@ -81,8 +81,19 @@ export interface DonationProcess {
   };
 }
 
+export interface InitialDonorInput {
+  rndCode?: string;
+  originatingIpsName?: string;
+  clinicalService?: string;
+  fullName?: string;
+  documentNumber?: string;
+  bloodGroup?: string;
+  rhFactor?: string;
+}
+
 export interface CreateDonationProcessInput {
-  donorId: string;
+  donorId?: string;
+  donor?: InitialDonorInput;
   primaryIpsName: string;
   processCode?: string;
   packageVersionId?: string;

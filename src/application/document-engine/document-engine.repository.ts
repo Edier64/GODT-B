@@ -63,9 +63,10 @@ export interface DocumentEngineRepository {
     access: DocumentAccessContext;
     correlationId: string;
     responseData: Prisma.InputJsonValue;
-    sourceProvenance: Array<{
+    sourceProvenance?: Array<{
       fieldPath: string;
       sourceKind: string;
+      canonicalFieldKey?: string;
       sourceEntityId?: string;
       sourceDocumentId?: string;
       ocrFieldId?: string;
@@ -87,9 +88,10 @@ export interface DocumentEngineRepository {
     actorUserId: string;
     access: DocumentAccessContext;
     responseData: Prisma.InputJsonValue;
-    sourceProvenance: Array<{
+    sourceProvenance?: Array<{
       fieldPath: string;
       sourceKind: string;
+      canonicalFieldKey?: string;
       sourceEntityId?: string;
       sourceDocumentId?: string;
       ocrFieldId?: string;
