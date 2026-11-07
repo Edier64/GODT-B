@@ -1,22 +1,22 @@
-# GODT REGIONAL 3 — LIMITACIONES CONOCIDAS Y CONDICIONES OPERATIVAS (FASE G.1)
-## Ingesta Documental, OCR e Inteligencia Artificial Clínica
+# GODT REGIONAL 3 — LIMITACIONES CONOCIDAS Y CONDICIONES OPERATIVAS (FASE G.1 & G.1.1)
+## Ingesta Documental, OCR Local e Inteligencia Artificial en la Nube
 
 **Módulo:** Ingesta y Extracción Documental  
-**Versión:** 1.0.0 (Fase G.1)  
+**Versión:** 1.1.0 (Fase G.1.1)  
 **Fecha:** 2026-11-07  
 
 ---
 
 ## 1. CALIDAD MÍNIMA REQUERIDA EN DOCUMENTOS ESCANEADOS E IMÁGENES
 
-El motor de extracción híbrido (Capa de texto digital directa, OpenXML y Tesseract OCR local) opera con máxima precisión bajo las siguientes tolerancias técnicas:
+El motor de extracción híbrido (Capa de texto digital directa, OpenXML, Tesseract OCR local y Google Gemini) opera con máxima fidelidad bajo las siguientes tolerancias técnicas:
 
-| Parámetro | Valor Recomendado | Valor Mínimo Aceptable | Comportamiento si se degrada |
+| Parámetro | Valor Recomendado | Valor Mínimo Aceptable | Comportamiento ante Degradación |
 | :--- | :--- | :--- | :--- |
 | **Resolución de imagen** | 300 DPI | 150 DPI | Por debajo de 150 DPI la tasa de error en caracteres numéricos (cédulas, fechas) se incrementa significativamente. |
 | **Inclinación (Skew angle)** | $0^\circ$ (alineado) | $\pm 5^\circ$ | Inclinaciones superiores a $10^\circ$ impiden que las expresiones regulares asocien etiquetas contiguas. |
 | **Contraste / Fondo** | Texto negro sobre fondo blanco puro | Relación de contraste $\ge 4.5:1$ | Fondos con sombras de fotocopiadora o marcas de agua oscuras pueden ocultar decimales en valores de laboratorio. |
-| **Formato de archivo** | PDF digital original o PNG sin compresión con pérdida | JPEG con calidad $\ge 85\%$ | Artefactos JPEG de alta compresión alrededor del texto provocan falsos positivos en caracteres como `8` vs `3` o `0` vs `O`. |
+| **Formato de archivo** | PDF digital original o PNG sin compresión | JPEG con calidad $\ge 85\%$ | Artefactos JPEG de alta compresión alrededor del texto provocan falsos positivos en caracteres como `8` vs `3` o `0` vs `O`. |
 
 ---
 
@@ -52,12 +52,16 @@ El sistema aplicará la política estricta **Human-In-The-Loop** en cualquiera d
 
 ---
 
-## 5. DEPENDENCIAS EXTERNAS Y MODO DE CONTINGENCIA OFFLINE
+## 5. PROVEEDORES EXTERNOS (GOOGLE GEMINI) Y TOLERANCIA A SOBRECARGA
 
-1. **Privacidad de Datos Clínicos:**
-   - La arquitectura de Fase G.1 opera de manera **100% local y offline por defecto**.
-   - No se envían documentos, imágenes ni datos personales a proveedores externos de IA en la nube (como OpenAI o Google Gemini), protegiendo la confidencialidad médica según la Ley Estatutaria 1581 de 2012 de Colombia.
-2. **Modo de Contingencia sin Redis/BullMQ:**
-   - Si Redis no está disponible o el contenedor de colas está detenido, el backend activa el fallback en proceso (`inline processing`) para documentos digitales y DOCX, permitiendo que el flujo operativo de donación continúe sin interrupciones.
-3. **Activación Opcional de Modelos de Lenguaje Avanzados:**
-   - Si en el futuro la institución decide habilitar un modelo de lenguaje externo o local (vLLM / Ollama), se requerirá la configuración explícita de `AI_PROVIDER_ENABLED=true` y el consentimiento en el protocolo de privacidad institucional.
+1. **Gobernanza de Activación:**
+   - Variable canónica: `AI_EXTERNAL_PROVIDER_ENABLED=true` (con soporte para el alias `AI_PROVIDER_ENABLED`).
+   - Requiere `NODE_ENV=development` y `GEMINI_API_KEY` válida.
+   - En `staging` y `production`, el proveedor se desactiva por defecto protegiendo la confidencialidad médica.
+2. **Disponibilidad de Modelos en Google Generative Language API:**
+   - La API v1beta de Google retiró los modelos heredados (`gemini-2.5-flash` y `gemini-1.5-flash`), respondiendo con código 404 e indicando migración a `gemini-3.8-flash`.
+   - **Comportamiento ante sobrecarga (Status 503 / 429):** Durante picos globales de demanda, la API de Google puede responder con código HTTP 503 (`UNAVAILABLE: This model is currently experiencing high demand`).
+   - **Mitigación Arquitectural:** El adaptador captura estos fallos de forma no destructiva y activa inmediatamente el fallback a reglas locales y OCR local, garantizando que el usuario en el hospital nunca se quede sin resultados de extracción.
+3. **Estado de Binarios del Sistema Operativo Host (Windows):**
+   - **Documentos Digitales (.docx y PDF nativos):** Funcionamiento 100% operativo sin dependencias externas del sistema operativo.
+   - **Documentos Escaneados / Mapas de Bits:** Requieren la presencia física de `tesseract.exe` (con paquete `spa.traineddata`) y Poppler (`pdftoppm.exe`) en el PATH del sistema host o en contenedores Docker dedicados.

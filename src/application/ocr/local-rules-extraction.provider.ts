@@ -261,3 +261,4 @@ export class LocalRulesExtractionProvider {
     return fullText.substring(start, end).replace(/\s+/g, " ").trim();
   }
 }
+

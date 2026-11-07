@@ -96,3 +96,4 @@ Los 4 documentos complementarios en DOCX (`Cálculo Hemodilución`, `Evaluación
 ## 6. CONCLUSIÓN DE LA AUDITORÍA
 
 El inventario de 19 plantillas oficiales en `official-template-definitions.ts` y las 23 posiciones del paquete en `process-package.ts` se encuentran debidamente alineados con la realidad normativa de la Regional 3. No existen inconsistencias ni duplicidades en las definiciones de plantillas.
+
