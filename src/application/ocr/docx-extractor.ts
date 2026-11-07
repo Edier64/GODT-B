@@ -98,3 +98,4 @@ function cleanXmlTags(xml: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
+
