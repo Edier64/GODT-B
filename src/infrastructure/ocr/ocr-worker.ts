@@ -3,6 +3,7 @@ import {
   Injectable,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Job, Worker } from "bullmq";
@@ -23,6 +24,7 @@ import {
 } from "../../application/ocr/ocr.repository";
 import { OCR_QUEUE } from "../../application/ocr/ocr.queue";
 import { PrismaService } from "../prisma/prisma.service";
+import { DocumentUnderstandingService } from "../../application/ocr/document-understanding.service";
 
 @Injectable()
 export class OcrWorker implements OnModuleInit, OnModuleDestroy {
@@ -35,6 +37,7 @@ export class OcrWorker implements OnModuleInit, OnModuleDestroy {
     @Inject(OCR_PROVIDER) private readonly provider: OcrProviderPort,
     @Inject(OCR_REPOSITORY) private readonly repository: OcrRepository,
     @Inject(OCR_QUEUE) private readonly queue: Queue,
+    @Optional() private readonly documentUnderstanding?: DocumentUnderstandingService,
   ) {}
 
   onModuleInit() {
@@ -79,22 +82,38 @@ export class OcrWorker implements OnModuleInit, OnModuleDestroy {
     });
     if (!document) throw new Error("OCR source document not found");
     try {
-      const candidates = await this.provider.process({
-        buffer: await this.storage.get(document.objectStorageKey),
-        mimeType: document.mimeType,
-      });
-      const allowed = new Set(
-        this.config
-          .get<string>("OCR_ALLOWED_FIELDS", "")
-          .split(",")
-          .map((key) => key.trim())
-          .filter(Boolean),
-      );
-      const safeCandidates = candidates.filter((candidate) =>
-        allowed.has(candidate.canonicalFieldKey),
-      );
-      if (safeCandidates.length !== candidates.length)
-        throw new Error("OCR response contains an unknown canonical field");
+      const buffer = await this.storage.get(document.objectStorageKey);
+      let candidates = [];
+
+      if (this.documentUnderstanding) {
+        const result = await this.documentUnderstanding.analyze({
+          buffer,
+          mimeType: document.mimeType,
+          sourceDocumentId: document.id,
+          processId: document.processId || undefined,
+        });
+        candidates = result.candidates;
+      } else {
+        candidates = await this.provider.process({
+          buffer,
+          mimeType: document.mimeType,
+        });
+      }
+
+      const rawAllowed = this.config.get<string>("OCR_ALLOWED_FIELDS", "");
+      let safeCandidates = candidates;
+      if (rawAllowed && rawAllowed.trim()) {
+        const allowed = new Set(
+          rawAllowed
+            .split(",")
+            .map((key) => key.trim())
+            .filter(Boolean),
+        );
+        safeCandidates = candidates.filter((candidate) =>
+          allowed.has(candidate.canonicalFieldKey),
+        );
+      }
+
       await this.repository.saveCandidates(
         ocrJob.id,
         document.id,
