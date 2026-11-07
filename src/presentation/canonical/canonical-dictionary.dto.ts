@@ -100,6 +100,13 @@ export class ApplyCanonicalValueDto {
 }
 
 export class ResolveCanonicalConflictDto {
+  @ApiPropertyOptional({
+    description: "Clave del marcador canónico si se envía en el cuerpo",
+  })
+  @IsOptional()
+  @IsString()
+  canonicalFieldKey?: string;
+
   @ApiProperty({
     description: "Estrategia seleccionada para resolver el conflicto",
     enum: ["ACCEPT_CANDIDATE", "KEEP_CURRENT", "MANUAL_OVERRIDE"],
@@ -112,6 +119,12 @@ export class ResolveCanonicalConflictDto {
   })
   @IsOptional()
   resolvedValue?: unknown;
+
+  @ApiPropertyOptional({
+    description: "Alias compatible para resolvedValue cuando el cliente envía manualValue",
+  })
+  @IsOptional()
+  manualValue?: unknown;
 
   @ApiProperty({
     description: "Justificación obligatoria de la resolución",

@@ -21,7 +21,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "document:register-anexo-6": "ts-node scripts/register-anexo-6.ts"
+    "document:register-anexo-6": "ts-node scripts/register-anexo-6.ts",
+    "token:dev": "ts-node scripts/seed-dev-users-and-tokens.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

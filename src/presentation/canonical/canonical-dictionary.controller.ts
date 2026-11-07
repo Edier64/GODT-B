@@ -123,20 +123,54 @@ export class CanonicalDictionaryController {
     );
   }
 
-  @Post("donation-processes/:id/canonical-values/:fieldKey/resolve-conflict")
-  @ApiOperation({ summary: "Resolver un conflicto de valor canónico con justificación auditada" })
-  async resolve(
+  @Post("donation-processes/:id/canonical-values")
+  @ApiOperation({ summary: "Ingresar o actualizar un valor canónico directamente a nivel de proceso" })
+  async applyDirect(
     @Param("id") processId: string,
-    @Param("fieldKey") fieldKey: string,
-    @Body() dto: ResolveCanonicalConflictDto,
+    @Body() dto: ApplyCanonicalValueDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.run(() =>
+      this.applyCanonicalValue.executeDirect({
+        processId,
+        canonicalFieldKey: dto.canonicalFieldKey,
+        value: dto.value,
+        unit: dto.unit,
+        sampleContext: dto.sampleContext,
+        effectiveAt: dto.effectiveAt ? new Date(dto.effectiveAt) : undefined,
+        sourceKind: dto.sourceKind,
+        conflictResolution: dto.conflictResolution,
+        user,
+      }),
+    );
+  }
+
+  @Post([
+    "donation-processes/:id/canonical-values/:fieldKey/resolve-conflict",
+    "donation-processes/:id/canonical-values/resolve-conflict",
+  ])
+  @ApiOperation({ summary: "Resolver un conflicto de valor canónico con justificación auditada" })
+  async resolve(
+    @Param("id") processId: string,
+    @Param("fieldKey") paramFieldKey: string | undefined,
+    @Body() dto: ResolveCanonicalConflictDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const key = paramFieldKey || dto.canonicalFieldKey;
+    if (!key) {
+      throw new HttpException(
+        "Debe proporcionar canonicalFieldKey en la URL o en el cuerpo de la solicitud",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const resolvedValue =
+      dto.resolvedValue !== undefined ? dto.resolvedValue : dto.manualValue;
+    return this.run(() =>
       this.resolveConflict.execute({
         processId,
-        canonicalFieldKey: fieldKey,
+        canonicalFieldKey: key,
         strategy: dto.strategy,
-        resolvedValue: dto.resolvedValue,
+        resolvedValue,
         justification: dto.justification,
         user,
       }),

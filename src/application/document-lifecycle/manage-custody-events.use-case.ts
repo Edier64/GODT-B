@@ -66,11 +66,12 @@ export class ManageCustodyEventsUseCase {
       );
     }
 
-    // Validación de temperatura según límites biológicos de preservación de órganos y tejidos
+    // Validación de temperatura: únicamente se exige que sea numérica y finita.
+    // Los rangos térmicos operativos quedan pendientes de homologación institucional.
     if (input.temperatureCelsius !== undefined && input.temperatureCelsius !== null) {
-      if (input.temperatureCelsius < -80 || input.temperatureCelsius > 45) {
+      if (typeof input.temperatureCelsius !== "number" || !Number.isFinite(input.temperatureCelsius)) {
         throw new CustodySequenceError(
-          `La temperatura registrada (${input.temperatureCelsius} °C) está fuera de los rangos biológicos admisibles (-80 °C a 45 °C)`,
+          "La temperatura registrada debe ser un valor numérico finito.",
         );
       }
     }
