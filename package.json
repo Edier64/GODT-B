@@ -23,7 +23,8 @@
     "prisma:studio": "prisma studio",
     "document:register-anexo-6": "ts-node scripts/register-anexo-6.ts",
     "seed:templates": "ts-node scripts/seed-official-templates.ts",
-    "token:dev": "ts-node scripts/seed-dev-users-and-tokens.ts"
+    "token:dev": "ts-node scripts/seed-dev-users-and-tokens.ts",
+    "backup:test": "ts-node scripts/verify-backup-recovery.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",
