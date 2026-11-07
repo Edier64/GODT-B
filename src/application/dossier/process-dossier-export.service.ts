@@ -26,7 +26,11 @@ export class ProcessDossierExportService {
     private readonly zipService: PackageZipService,
   ) {}
 
-  async processExport(exportId: string, user: AuthenticatedUser): Promise<void> {
+  async processExport(
+    exportId: string,
+    user: AuthenticatedUser,
+    workerInstanceId?: string,
+  ): Promise<void> {
     const exportRecord = await this.prisma.processDossierExport.findUnique({
       where: { id: exportId },
       include: { process: true },
@@ -37,13 +41,15 @@ export class ProcessDossierExportService {
     }
 
     try {
-      // 1. Estado inicial: PROCESSING
+      // 1. Estado inicial: PROCESSING con asignación de worker y heartbeat
       await this.prisma.processDossierExport.update({
         where: { id: exportId },
         data: {
           status: "PROCESSING",
           progressPercent: 10,
           currentStep: "RECOPILANDO_DATOS",
+          processingWorkerId: workerInstanceId || null,
+          lastHeartbeatAt: new Date(),
         },
       });
 
@@ -61,6 +67,7 @@ export class ProcessDossierExportService {
         data: {
           progressPercent: 25,
           currentStep: "CARGANDO_DOCUMENTOS_ORIGINALES",
+          lastHeartbeatAt: new Date(),
         },
       });
 
@@ -334,6 +341,7 @@ export class ProcessDossierExportService {
           manifestData: finalizedManifest as any,
           completedAt: now,
           expiresAt,
+          lastHeartbeatAt: now,
         },
       });
 
