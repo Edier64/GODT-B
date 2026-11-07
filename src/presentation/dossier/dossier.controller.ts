@@ -26,6 +26,7 @@ import { AUDIT_EVENT_PORT, AuditEventPort } from "../../application/audit/audit-
 import {
   DossierAccessDeniedError,
   DossierNotFoundError,
+  DossierQueueUnavailableError,
   DossierValidationError,
 } from "../../domain/dossier/dossier.types";
 
@@ -221,6 +222,9 @@ export class DossierController {
     }
     if (err instanceof DossierValidationError) {
       throw new HttpException(err.message, HttpStatus.BAD_REQUEST);
+    }
+    if (err instanceof DossierQueueUnavailableError) {
+      throw new HttpException(err.message, HttpStatus.SERVICE_UNAVAILABLE);
     }
     const msg = (err as any)?.message || "Error interno del servidor en módulo de expediente";
     throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);

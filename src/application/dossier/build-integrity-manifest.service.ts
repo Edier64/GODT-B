@@ -1,12 +1,14 @@
 import { Injectable } from "@nestjs/common";
-import { createHash } from "crypto";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import {
+  computeCanonicalManifestDigest,
   DossierDocumentItem,
   DossierManifest,
+  DossierManifestFileItem,
   DossierSignatureItem,
   DossierSourceDocumentItem,
 } from "../../domain/dossier/dossier.types";
+import { getOfficialDossierFilename } from "../../domain/dossier/dossier-nomenclature";
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
 
 export interface BuildManifestInput {
@@ -15,13 +17,6 @@ export interface BuildManifestInput {
   includeSourceDocuments?: boolean;
   selectedDocumentCodes?: string[];
   selectedSourceDocumentIds?: string[];
-}
-
-export interface ManifestBuildResult {
-  manifest: DossierManifest;
-  evidenciasAtestaciones: Record<string, unknown>;
-  releasedPdfBuffersByPosition: Map<number, Buffer>;
-  sourceDocumentBuffersById: Map<string, { buffer: Buffer; filename: string }>;
 }
 
 @Injectable()
@@ -71,8 +66,8 @@ export class BuildIntegrityManifestService {
       },
     });
 
-    // Mapear el último PDF generado por documentInstanceId o documentCode
-    const latestPdfByInstanceId = new Map<string, typeof pdfs[0]>();
+    // Mapear el último PDF generado por documentInstanceId
+    const latestPdfByInstanceId = new Map<string, (typeof pdfs)[0]>();
     for (const pdf of pdfs) {
       if (pdf.documentInstanceId && !latestPdfByInstanceId.has(pdf.documentInstanceId)) {
         latestPdfByInstanceId.set(pdf.documentInstanceId, pdf);
@@ -110,18 +105,32 @@ export class BuildIntegrityManifestService {
       // Buscar último PDF asociado
       const latestPdf = instance ? latestPdfByInstanceId.get(instance.id) : undefined;
 
-      // Extraer firmas
+      // Extraer firmas con validación estricta de hash de atestación
       const signatures: DossierSignatureItem[] = [];
       if (instance?.documentParticipants) {
         for (const part of instance.documentParticipants) {
           for (const sig of part.signatures) {
+            const rawHash = sig.snapshotHash?.trim();
+            // Descartar hash de string vacío (e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)
+            const isEmptyHash =
+              !rawHash ||
+              rawHash === "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+            const attestationLevel =
+              sig.signatureType === "DIGITAL_CERTIFICADA"
+                ? "DIGITAL_CERTIFICADA_BLOQUEADA"
+                : "ATESTA_MANUAL_INTERNA";
+
             signatures.push({
+              participantId: part.id,
               signerRole: part.signerRole,
               signerName: part.fullName,
               signerDocument: part.documentNumber,
               signatureType: sig.signatureType,
               signedAt: sig.signedAt ? sig.signedAt.toISOString() : null,
-              snapshotSha256: sig.snapshotHash,
+              snapshotSha256: isEmptyHash ? null : rawHash,
+              hasCryptographicSignature: !isEmptyHash,
+              attestationLevel,
             });
           }
         }
@@ -138,6 +147,13 @@ export class BuildIntegrityManifestService {
       const isEligibleForConsolidation =
         docStatus === "LIBERADO" && isSelected && pDoc.applicabilityStatus !== "NO_APLICA";
 
+      // Nomenclatura oficial homologada
+      const officialFileName = getOfficialDossierFilename(
+        pDoc.positionNumber,
+        pDoc.documentCode,
+        latestPdf?.versionNumber || 1,
+      );
+
       documentsList.push({
         positionNumber: pDoc.positionNumber,
         documentCode: pDoc.documentCode,
@@ -147,14 +163,16 @@ export class BuildIntegrityManifestService {
         nonApplicabilityReason: pDoc.nonApplicabilityReason,
         category: pDoc.category,
         includedInConsolidatedPdf: isEligibleForConsolidation,
-        consolidatedPageRange: null, // Se calculará al ensamblar el PDF
+        consolidatedPageRange: null,
         originalFile: latestPdf
           ? {
-              fileName: `${pDoc.documentCode}_v${latestPdf.versionNumber}.pdf`,
+              fileName: officialFileName,
               sha256: latestPdf.sha256Hash,
               sizeBytes: (latestPdf.dataSnapshot as any)?.pdfSizeBytes || 0,
               versionNumber: latestPdf.versionNumber,
-              generatedAt: (latestPdf.dataSnapshot as any)?.generatedAt || process.updatedAt.toISOString(),
+              generatedAt:
+                (latestPdf.dataSnapshot as any)?.generatedAt ||
+                process.updatedAt.toISOString(),
               storageKey: latestPdf.objectStorageKey,
             }
           : null,
@@ -163,7 +181,7 @@ export class BuildIntegrityManifestService {
       });
     }
 
-    // 3. Documentos Fuente (solo si autorizados explícitamente)
+    // 3. Documentos Fuente (solo si autorizados explícitamente y bajo juramento)
     const sourceDocumentsList: DossierSourceDocumentItem[] = [];
     if (input.includeSourceDocuments && process.sourceDocuments) {
       for (const src of process.sourceDocuments) {
@@ -178,7 +196,7 @@ export class BuildIntegrityManifestService {
             category: src.documentCategory,
             originalFilename: src.originalFilename,
             sha256: src.sha256Hash,
-            sizeBytes: 0, // Se complementa al leer el buffer si aplica
+            sizeBytes: 0,
             uploadedAt: src.uploadedAt.toISOString(),
             includedInPackage: true,
           });
@@ -186,7 +204,7 @@ export class BuildIntegrityManifestService {
       }
     }
 
-    // 4. Armar Manifiesto Raíz
+    // 4. Armar Manifiesto Base
     const userRecord = await this.prisma.systemUser.findUnique({
       where: { id: input.user.userId },
     });
@@ -208,7 +226,7 @@ export class BuildIntegrityManifestService {
       packageVersion: process.packageVersion?.versionNumber
         ? `v${process.packageVersion.versionNumber}`
         : "Piloto Regional 3 v1.0.0",
-      systemVersion: "GODT Regional 3 v1.0.0 (Fase E)",
+      systemVersion: "GODT Regional 3 v1.0.0 (Fase E.1)",
       summary: {
         totalPositions: documentsList.length,
         normativePositions: 19,
@@ -219,41 +237,74 @@ export class BuildIntegrityManifestService {
         nonApplicableCount,
         pendingHomologationCount,
         sourceDocumentsIncludedCount: sourceDocumentsList.length,
+        hasConsolidatedPdf: true,
       },
       consolidatedPdf: null,
-      zipPackage: null,
       documents: documentsList,
       sourceDocuments: sourceDocumentsList,
+      files: [],
     };
 
-    // Calcular hash determinista del manifiesto (sin el campo manifestSha256)
-    const manifestString = JSON.stringify(manifest, Object.keys(manifest).sort());
-    manifest.manifestSha256 = createHash("sha256").update(manifestString).digest("hex");
-
     return manifest;
+  }
+
+  /**
+   * Registra el inventario de archivos en el manifiesto y calcula el digest canónico.
+   * Nivel A: Hashes individuales en manifest.files.
+   * Nivel B: manifestDigest calculado determinísticamente.
+   */
+  finalizeManifest(manifest: DossierManifest, files: DossierManifestFileItem[]): {
+    manifest: DossierManifest;
+    manifestDigest: string;
+  } {
+    // Ordenar archivos por ruta relativa de forma determinista
+    manifest.files = [...files].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+    // Nivel B: Calcular digest canónico excluyendo manifestDigest
+    const manifestDigest = computeCanonicalManifestDigest(manifest);
+    manifest.manifestDigest = manifestDigest;
+
+    return { manifest, manifestDigest };
   }
 
   buildEvidenciasAtestaciones(
     manifest: DossierManifest,
     custodyEventsByDoc: Array<{ documentCode: string; events: any[] }>,
   ): Record<string, unknown> {
+    const validSignaturesTrail = manifest.documents
+      .filter((d) => d.signatures.length > 0)
+      .map((d) => ({
+        positionNumber: d.positionNumber,
+        documentCode: d.documentCode,
+        title: d.title,
+        signatures: d.signatures.map((sig) => ({
+          signerRole: sig.signerRole,
+          signerName: sig.signerName,
+          signerDocument: sig.signerDocument,
+          signatureType: sig.signatureType,
+          signedAt: sig.signedAt,
+          snapshotSha256: sig.snapshotSha256,
+          hasCryptographicSignature: sig.hasCryptographicSignature,
+          attestationLevel: sig.attestationLevel,
+        })),
+      }));
+
     return {
       schemaVersion: "1.0.0",
       processId: manifest.processId,
       processCode: manifest.processCode,
       generatedAt: manifest.generatedAt,
-      generatedBy: manifest.generatedBy,
-      signaturesAuditTrail: manifest.documents
-        .filter((d) => d.signatures.length > 0)
-        .map((d) => ({
-          positionNumber: d.positionNumber,
-          documentCode: d.documentCode,
-          title: d.title,
-          signatures: d.signatures,
-        })),
+      generatedBy: {
+        userId: manifest.generatedBy.userId,
+        fullName: manifest.generatedBy.fullName,
+        role: manifest.generatedBy.role,
+      },
+      signaturesAuditTrail: validSignaturesTrail,
       custodyChainsAuditTrail: custodyEventsByDoc,
-      verificationNotice:
-        "Este archivo contiene las evidencias criptográficas de atestación bajo juramento y eslabones de cadena de custodia formalmente registrados en GODT Regional 3.",
+      attestationNotice:
+        "Las atestaciones documentadas corresponden a declaraciones y firmas manuscritas o electrónicas simples emitidas bajo juramento en el marco clínico de GODT Regional 3.",
+      digitalSignatureDisclaimer:
+        "AVISO TÉCNICO-LEGAL: La modalidad DIGITAL_CERTIFICADA (PKI acreditado por ONAC) se encuentra actualmente bloqueada hasta la suscripción con el prestador de certificación digital. Ninguna firma interna debe ser tratada como certificado digital de clave pública hasta su homologación formal.",
     };
   }
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import { createHash } from "crypto";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { FILE_STORAGE_PORT, FileStoragePort } from "../documents/file-storage.port";
 import { AUDIT_EVENT_PORT, AuditEventPort } from "../audit/audit-event.port";
@@ -7,6 +8,7 @@ import { GenerateDossierIndexService } from "./generate-dossier-index.service";
 import { ConsolidatePdfService } from "./consolidate-pdf.service";
 import { PackageZipService } from "./package-zip.service";
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
+import { DossierManifestFileItem } from "../../domain/dossier/dossier.types";
 
 @Injectable()
 export class ProcessDossierExportService {
@@ -83,12 +85,14 @@ export class ProcessDossierExportService {
               buffer: buf,
             });
           } catch (err: any) {
-            this.logger.warn(`No se pudo leer buffer para ${doc.documentCode}: ${err?.message}`);
+            this.logger.warn(
+              `No se pudo leer buffer para ${doc.documentCode}: ${err?.message}`,
+            );
           }
         }
       }
 
-      // 4. Preparar archivos de custodia (Anexo 8)
+      // 4. Preparar archivos de custodia (Anexo 8) sin duplicación de binarios
       const custodyFiles: Array<{ filename: string; buffer: Buffer }> = [];
       const anexo8Doc = manifest.documents.find((d) => d.documentCode.includes("ANEXO_8"));
       const custodyEventsByDoc: Array<{ documentCode: string; events: any[] }> = [];
@@ -109,20 +113,26 @@ export class ProcessDossierExportService {
           buffer: Buffer.from(JSON.stringify(custodyEvents, null, 2), "utf-8"),
         });
 
-        if (anexo8Doc.status === "LIBERADO" && anexo8Doc.originalFile?.storageKey) {
-          try {
-            const anexo8Buf = await this.storage.get(anexo8Doc.originalFile.storageKey);
-            custodyFiles.push({
-              filename: "anexo_8_cadena_custodia.pdf",
-              buffer: anexo8Buf,
-            });
-          } catch {
-            // continuar si ya está en releasedPdfsForZip
-          }
-        }
+        // Puntero de referencia inequívoco que evita duplicación binaria del PDF en el ZIP
+        const anexo8Reference = {
+          documentCode: "ANEXO_8",
+          positionNumber: 18,
+          title: "Anexo 8 — Formato cadena de custodia EMP y evidencias",
+          officialPdfLocation: anexo8Doc.originalFile
+            ? `01_DOCUMENTOS_LIBERADOS/${anexo8Doc.originalFile.fileName}`
+            : null,
+          sha256: anexo8Doc.originalFile?.sha256 || null,
+          notice:
+            "El documento oficial firmado de Acta de Cadena de Custodia se conserva en la carpeta 01_DOCUMENTOS_LIBERADOS/ preservando intacta su firma electrónica y su hash SHA-256. En 04_CADENA_CUSTODIA/ se preservan los eventos y la línea de tiempo inmutable.",
+        };
+
+        custodyFiles.push({
+          filename: "referencia_anexo_8.json",
+          buffer: Buffer.from(JSON.stringify(anexo8Reference, null, 2), "utf-8"),
+        });
       }
 
-      // 5. Leer documentos fuente si fueron autorizados y solicitados
+      // 5. Leer documentos fuente si fueron autorizados y solicitados bajo juramento
       const sourceDocumentsForZip: Array<{
         filename: string;
         category: string;
@@ -148,7 +158,9 @@ export class ProcessDossierExportService {
               buffer: buf,
             });
           } catch (err: any) {
-            this.logger.warn(`No se pudo leer documento fuente ${src.id}: ${err?.message}`);
+            this.logger.warn(
+              `No se pudo leer documento fuente ${src.id}: ${err?.message}`,
+            );
           }
         }
       }
@@ -161,7 +173,7 @@ export class ProcessDossierExportService {
         },
       });
 
-      // 6. Consolidar PDF y calcular rangos de página
+      // 6. Consolidar PDF continuo y calcular rangos de página
       const consolidateResult = await this.consolidateService.consolidate(
         manifest,
         releasedPdfBuffersByPosition,
@@ -191,9 +203,109 @@ export class ProcessDossierExportService {
         custodyEventsByDoc,
       );
 
-      // 8. Empaquetar el archivo ZIP completo
+      // 8. Construir inventario de archivos (Nivel A: Hashes individuales en manifest.files)
+      const manifestFiles: DossierManifestFileItem[] = [];
+
+      // 00_INDICE
+      manifestFiles.push({
+        fileName: "indice_expediente.pdf",
+        relativePath: "00_INDICE/indice_expediente.pdf",
+        fileType: "INDEX_PDF",
+        sha256: createHash("sha256").update(indexResult.pdfBuffer).digest("hex"),
+        sizeBytes: indexResult.pdfBuffer.length,
+      });
+
+      const indexJsonBuf = Buffer.from(
+        JSON.stringify(indexResult.jsonSummary, null, 2),
+        "utf-8",
+      );
+      manifestFiles.push({
+        fileName: "resumen_expediente.json",
+        relativePath: "00_INDICE/resumen_expediente.json",
+        fileType: "INDEX_JSON",
+        sha256: createHash("sha256").update(indexJsonBuf).digest("hex"),
+        sizeBytes: indexJsonBuf.length,
+      });
+
+      // 01_DOCUMENTOS_LIBERADOS
+      for (const doc of releasedPdfsForZip) {
+        manifestFiles.push({
+          fileName: doc.filename,
+          relativePath: `01_DOCUMENTOS_LIBERADOS/${doc.filename}`,
+          fileType: "ORIGINAL_PDF",
+          sha256: createHash("sha256").update(doc.buffer).digest("hex"),
+          sizeBytes: doc.buffer.length,
+          documentCode: doc.documentCode,
+          positionNumber: doc.positionNumber,
+          status: "LIBERADO",
+        });
+      }
+
+      // 02_DOCUMENTO_CONSOLIDADO
+      manifestFiles.push({
+        fileName: "expediente_consolidado.pdf",
+        relativePath: "02_DOCUMENTO_CONSOLIDADO/expediente_consolidado.pdf",
+        fileType: "CONSOLIDATED_PDF",
+        sha256: consolidateResult.sha256Hash,
+        sizeBytes: consolidateResult.pdfBuffer.length,
+      });
+
+      // 03_EVIDENCIAS: evidencias_atestaciones.json
+      const evidBuf = Buffer.from(
+        JSON.stringify(evidenciasAtestaciones, null, 2),
+        "utf-8",
+      );
+      manifestFiles.push({
+        fileName: "evidencias_atestaciones.json",
+        relativePath: "03_EVIDENCIAS/evidencias_atestaciones.json",
+        fileType: "EVIDENCE_ATTESTATIONS",
+        sha256: createHash("sha256").update(evidBuf).digest("hex"),
+        sizeBytes: evidBuf.length,
+      });
+
+      // 04_CADENA_CUSTODIA
+      for (const cf of custodyFiles) {
+        manifestFiles.push({
+          fileName: cf.filename,
+          relativePath: `04_CADENA_CUSTODIA/${cf.filename}`,
+          fileType: cf.filename.includes("evento") ? "CUSTODY_EVENTS" : "CUSTODY_REFERENCE",
+          sha256: createHash("sha256").update(cf.buffer).digest("hex"),
+          sizeBytes: cf.buffer.length,
+        });
+      }
+
+      // 05_FUENTES_COMPLEMENTARIAS
+      for (const src of sourceDocumentsForZip) {
+        manifestFiles.push({
+          fileName: src.filename,
+          relativePath: `05_FUENTES_COMPLEMENTARIAS/${src.category}/${src.filename}`,
+          fileType: "SOURCE_DOCUMENT",
+          sha256: createHash("sha256").update(src.buffer).digest("hex"),
+          sizeBytes: src.buffer.length,
+        });
+      }
+
+      // 6. README.txt institucional
+      const readmeContent = this.zipService.buildReadme(consolidateResult.updatedManifest);
+      const readmeBuf = Buffer.from(readmeContent, "utf-8");
+      manifestFiles.push({
+        fileName: "README.txt",
+        relativePath: "README.txt",
+        fileType: "README",
+        sha256: createHash("sha256").update(readmeBuf).digest("hex"),
+        sizeBytes: readmeBuf.length,
+      });
+
+      // Finalizar manifiesto con Nivel A y Nivel B (manifestDigest canónico)
+      const { manifest: finalizedManifest, manifestDigest } =
+        this.manifestService.finalizeManifest(
+          consolidateResult.updatedManifest,
+          manifestFiles,
+        );
+
+      // 9. Empaquetar el archivo ZIP completo (Nivel C)
       const zipResult = await this.zipService.createPackage({
-        manifest: consolidateResult.updatedManifest,
+        manifest: finalizedManifest,
         indexPdfBuffer: indexResult.pdfBuffer,
         indexJsonSummary: indexResult.jsonSummary,
         consolidatedPdfBuffer: consolidateResult.pdfBuffer,
@@ -201,18 +313,12 @@ export class ProcessDossierExportService {
         releasedPdfs: releasedPdfsForZip,
         custodyFiles,
         sourceDocuments: sourceDocumentsForZip,
+        readmeBuffer: readmeBuf,
       });
 
-      // Actualizar manifiesto con metadata del ZIP
-      consolidateResult.updatedManifest.zipPackage = {
-        fileName: zipResult.fileName,
-        sha256: zipResult.sha256Hash,
-        sizeBytes: zipResult.sizeBytes,
-      };
-
-      // 9. Marcar exportación como COMPLETED
+      // 10. Marcar exportación como COMPLETED con manifestDigest y packageChecksumSha256
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 horas
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
       await this.prisma.processDossierExport.update({
         where: { id: exportId },
@@ -221,15 +327,17 @@ export class ProcessDossierExportService {
           progressPercent: 100,
           currentStep: "COMPLETADO",
           zipStorageKey: zipResult.storageKey,
-          zipSha256: zipResult.sha256Hash,
+          zipSha256: zipResult.packageChecksumSha256,
+          packageChecksumSha256: zipResult.packageChecksumSha256,
+          manifestDigest,
           zipSizeBytes: BigInt(zipResult.sizeBytes),
-          manifestData: consolidateResult.updatedManifest as any,
+          manifestData: finalizedManifest as any,
           completedAt: now,
           expiresAt,
         },
       });
 
-      // Registrar auditoría
+      // Registrar auditoría con los 3 niveles separados
       await this.audit.record({
         actorUserId: user.userId,
         action: "DOSSIER_EXPORT_COMPLETED",
@@ -238,7 +346,8 @@ export class ProcessDossierExportService {
         correlationId: exportRecord.processId,
         metadata: {
           processCode: exportRecord.process.processCode,
-          zipSha256: zipResult.sha256Hash,
+          packageChecksumSha256: zipResult.packageChecksumSha256,
+          manifestDigest,
           zipSizeBytes: zipResult.sizeBytes,
           consolidatedPdfSha256: consolidateResult.sha256Hash,
           totalPositions: manifest.documents.length,
@@ -248,7 +357,10 @@ export class ProcessDossierExportService {
 
       this.logger.log(`Exportación de expediente ${exportId} finalizada con éxito.`);
     } catch (error: any) {
-      this.logger.error(`Error procesando exportación de expediente ${exportId}: ${error?.message}`, error?.stack);
+      this.logger.error(
+        `Error procesando exportación de expediente ${exportId}: ${error?.message}`,
+        error?.stack,
+      );
 
       await this.prisma.processDossierExport.update({
         where: { id: exportId },
@@ -256,7 +368,8 @@ export class ProcessDossierExportService {
           status: "FAILED",
           progressPercent: 0,
           currentStep: "ERROR",
-          errorMessage: error?.message || "Error inesperado durante la consolidación del expediente.",
+          errorMessage:
+            error?.message || "Error inesperado durante la consolidación del expediente.",
         },
       });
 
