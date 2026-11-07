@@ -159,9 +159,126 @@ export class VerifyDossierIntegrityUseCase {
     const zipEntries = zip.getEntries();
     const rootPrefixRegex = new RegExp(`^GODT_EXPEDIENTE_${record.process.processCode}/`, "i");
 
-    // Mapear entradas limpiando prefijo de carpeta raíz
+    const MAX_ZIP_ENTRIES = 500;
+    const MAX_TOTAL_UNCOMPRESSED_BYTES = 500 * 1024 * 1024; // 500 MB
+    let totalUncompressedBytes = 0;
+
+    if (zipEntries.length > MAX_ZIP_ENTRIES) {
+      return {
+        exportId,
+        processCode: record.process.processCode,
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: user.userId,
+        overallStatus: "INTEGRITY_COMPROMISED",
+        expectedPackageSha256,
+        actualPackageSha256,
+        packageHashMatches,
+        expectedManifestDigest,
+        actualManifestDigest: "SUSPICIOUS_ZIP_STRUCTURE",
+        manifestDigestMatches: false,
+        totalFilesInspected: zipEntries.length,
+        totalChecked: 0,
+        correctFilesCount: 0,
+        passedCount: 0,
+        alteredFilesCount: 1,
+        missingFilesCount: 0,
+        unexpectedFilesCount: 0,
+        failedCount: 1,
+        items: [
+          {
+            relativePath: "root",
+            fileName: "paquete_zip",
+            itemType: "ZIP_SECURITY",
+            expectedSha256: expectedPackageSha256,
+            actualSha256: actualPackageSha256,
+            matches: false,
+            status: "ALTERED",
+            details: `El archivo ZIP excede el límite de seguridad de entradas (${zipEntries.length} > ${MAX_ZIP_ENTRIES}). Posible bomba de descompresión.`,
+          },
+        ],
+      };
+    }
+
+    // Mapear entradas verificando seguridad contra Path Traversal y Zip Bomb
     const entriesByRelativePath = new Map<string, (typeof zipEntries)[0]>();
     for (const entry of zipEntries) {
+      if (
+        entry.entryName.includes("..") ||
+        entry.entryName.startsWith("/") ||
+        entry.entryName.startsWith("\\")
+      ) {
+        return {
+          exportId,
+          processCode: record.process.processCode,
+          verifiedAt: new Date().toISOString(),
+          verifiedBy: user.userId,
+          overallStatus: "INTEGRITY_COMPROMISED",
+          expectedPackageSha256,
+          actualPackageSha256,
+          packageHashMatches,
+          expectedManifestDigest,
+          actualManifestDigest: "PATH_TRAVERSAL_DETECTED",
+          manifestDigestMatches: false,
+          totalFilesInspected: zipEntries.length,
+          totalChecked: 0,
+          correctFilesCount: 0,
+          passedCount: 0,
+          alteredFilesCount: 1,
+          missingFilesCount: 0,
+          unexpectedFilesCount: 0,
+          failedCount: 1,
+          items: [
+            {
+              relativePath: entry.entryName,
+              fileName: entry.name,
+              itemType: "ZIP_SECURITY",
+              expectedSha256: "",
+              actualSha256: "TRAVERSAL",
+              matches: false,
+              status: "ALTERED",
+              details: "Detectado intento de evasión de directorio (Path Traversal) en el archivo ZIP.",
+            },
+          ],
+        };
+      }
+
+      totalUncompressedBytes += entry.header.size;
+      if (totalUncompressedBytes > MAX_TOTAL_UNCOMPRESSED_BYTES) {
+        return {
+          exportId,
+          processCode: record.process.processCode,
+          verifiedAt: new Date().toISOString(),
+          verifiedBy: user.userId,
+          overallStatus: "INTEGRITY_COMPROMISED",
+          expectedPackageSha256,
+          actualPackageSha256,
+          packageHashMatches,
+          expectedManifestDigest,
+          actualManifestDigest: "ZIP_BOMB_DETECTED",
+          manifestDigestMatches: false,
+          totalFilesInspected: zipEntries.length,
+          totalChecked: 0,
+          correctFilesCount: 0,
+          passedCount: 0,
+          alteredFilesCount: 1,
+          missingFilesCount: 0,
+          unexpectedFilesCount: 0,
+          failedCount: 1,
+          items: [
+            {
+              relativePath: "root",
+              fileName: "paquete_zip",
+              itemType: "ZIP_SECURITY",
+              expectedSha256: expectedPackageSha256,
+              actualSha256: actualPackageSha256,
+              matches: false,
+              status: "ALTERED",
+              details: "El tamaño total descomprimido del ZIP excede el límite máximo de seguridad (500 MB).",
+            },
+          ],
+        };
+      }
+
       if (!entry.isDirectory) {
         const normalizedPath = entry.entryName.replace(rootPrefixRegex, "");
         entriesByRelativePath.set(normalizedPath, entry);
