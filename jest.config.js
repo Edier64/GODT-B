@@ -6,6 +6,9 @@ module.exports = {
   transform: {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@nestjs/jwt)/)',
+  ],
   collectCoverageFrom: ['src/**/*.ts'],
   testEnvironment: 'node',
 };
