@@ -135,4 +135,40 @@ describe("RFC 8785 (JSON Canonicalization Scheme - JCS) Compliance", () => {
       expect(digest1).toHaveLength(64);
     });
   });
+
+  describe("Unicode Validation & Lone Surrogate Rejection (RFC 8785 Section 3.2.2.2)", () => {
+    it("rejects lone high surrogates (U+D800 to U+DBFF) with TypeError", () => {
+      expect(() => canonicalJsonSerialize("\uD800")).toThrow(TypeError);
+      expect(() => canonicalJsonSerialize({ text: "pre\uD800post" })).toThrow(
+        "RFC 8785: Lone surrogate code point detected",
+      );
+    });
+
+    it("rejects lone low surrogates (U+DC00 to U+DFFF) with TypeError", () => {
+      expect(() => canonicalJsonSerialize("\uDC00")).toThrow(TypeError);
+      expect(() => canonicalJsonSerialize({ text: "pre\uDFFFpost" })).toThrow(
+        "RFC 8785: Lone surrogate code point detected",
+      );
+    });
+
+    it("rejects lone surrogates when present in object property keys", () => {
+      const invalidKeyObj = { ["invalid\uD800key"]: "value" };
+      expect(() => canonicalJsonSerialize(invalidKeyObj)).toThrow(
+        "RFC 8785: Lone surrogate in property name",
+      );
+    });
+
+    it("correctly preserves valid paired surrogates (astral Unicode code points)", () => {
+      const astralData = { emoji: "😀", heart: "💖", musical: "𝄞" };
+      const canonical = canonicalJsonSerialize(astralData);
+      expect(canonical).toContain('"emoji":"😀"');
+      expect(canonical).toContain('"heart":"💖"');
+      expect(canonical).toContain('"musical":"𝄞"');
+    });
+
+    it("handles BigInt safely without throwing uncaught exceptions", () => {
+      expect(canonicalJsonSerialize(BigInt(1048576))).toBe("1048576");
+      expect(canonicalJsonSerialize({ size: BigInt(2048) })).toBe('{"size":2048}');
+    });
+  });
 });

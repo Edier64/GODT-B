@@ -130,22 +130,37 @@ export class BuildIntegrityManifestService {
 
             const signedAtIso = sig.signedAt ? sig.signedAt.toISOString() : null;
 
+            const attestationDeclaration =
+              "Bajo la gravedad del juramento y en cumplimiento de los protocolos asistenciales de GODT Regional 3, atesto la veracidad de la información clínica y documental contenida en este documento.";
+
             // Digest canónico de la declaración de atestación
             const attestationStatement = {
+              attestationId: sig.id,
+              actorIdentity: {
+                participantId: part.id,
+                fullName: part.fullName,
+                documentNumber: part.documentNumber,
+                role: part.signerRole,
+              },
+              documentInstanceId: instance?.id || null,
+              documentCode: pDoc.documentCode,
+              documentPosition: pDoc.positionNumber,
+              versionNumber: latestPdf?.versionNumber || 1,
               documentPdfSha256: releasedPdfSha256,
-              participantId: part.id,
-              signedAt: signedAtIso,
-              signerDocument: part.documentNumber,
-              signerName: part.fullName,
-              signerRole: part.signerRole,
               signatureType: sig.signatureType,
+              attestationType: attestationLevel,
+              declaration: attestationDeclaration,
+              signedAt: signedAtIso,
             };
             const attestationDigest = createHash("sha256")
               .update(Buffer.from(canonicalJsonSerialize(attestationStatement), "utf-8"))
               .digest("hex");
 
             signatures.push({
+              attestationId: sig.id,
               participantId: part.id,
+              documentInstanceId: instance?.id,
+              versionNumber: latestPdf?.versionNumber || 1,
               signerRole: part.signerRole,
               signerName: part.fullName,
               signerDocument: part.documentNumber,
@@ -154,6 +169,7 @@ export class BuildIntegrityManifestService {
               documentPdfSha256: releasedPdfSha256,
               signatureEvidenceSha256,
               attestationDigest,
+              attestationDeclaration,
               snapshotSha256: signatureEvidenceSha256,
               hasCryptographicSignature: signatureEvidenceSha256 !== null,
               attestationLevel,
@@ -318,6 +334,10 @@ export class BuildIntegrityManifestService {
         documentCode: d.documentCode,
         title: d.title,
         signatures: d.signatures.map((sig) => ({
+          attestationId: sig.attestationId,
+          participantId: sig.participantId,
+          documentInstanceId: sig.documentInstanceId,
+          versionNumber: sig.versionNumber,
           signerRole: sig.signerRole,
           signerName: sig.signerName,
           signerDocument: sig.signerDocument,
@@ -326,6 +346,7 @@ export class BuildIntegrityManifestService {
           documentPdfSha256: sig.documentPdfSha256,
           signatureEvidenceSha256: sig.signatureEvidenceSha256,
           attestationDigest: sig.attestationDigest,
+          attestationDeclaration: sig.attestationDeclaration,
           hasCryptographicSignature: sig.hasCryptographicSignature,
           attestationLevel: sig.attestationLevel,
           technicalDisclaimer:

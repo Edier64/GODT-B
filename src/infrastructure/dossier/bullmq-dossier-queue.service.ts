@@ -27,9 +27,11 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
     private readonly processor: ProcessDossierExportService,
     private readonly prisma: PrismaService,
   ) {
-    this.workerInstanceId =
-      this.config.get<string>("INSTANCE_ID") ||
-      `worker-${process.pid}-${randomBytes(4).toString("hex")}`;
+    const configuredInstanceId = this.config.get<string>("INSTANCE_ID");
+    const uniqueSuffix = `${process.pid}-${randomBytes(4).toString("hex")}`;
+    this.workerInstanceId = configuredInstanceId
+      ? `${configuredInstanceId}-${uniqueSuffix}`
+      : `worker-${uniqueSuffix}`;
   }
 
   async onModuleInit() {
@@ -117,11 +119,11 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
   }
 
   async enqueueExport(exportId: string, user: AuthenticatedUser): Promise<void> {
-    const nodeEnv = this.config.get<string>("NODE_ENV", "development");
-    const isRestrictedEnv = nodeEnv === "production" || nodeEnv === "staging";
+    const rawEnv = (this.config.get<string>("NODE_ENV") || "").trim().toLowerCase();
+    const isSafeDevOrTest = rawEnv === "development" || rawEnv === "test";
     const enableFallbackConfig =
       this.config.get<string>("ENABLE_IN_MEMORY_QUEUE_FALLBACK") === "true";
-    const allowFallback = !isRestrictedEnv && enableFallbackConfig;
+    const allowFallback = isSafeDevOrTest && enableFallbackConfig;
 
     if (this.isRedisAvailable && this.queue) {
       try {
@@ -141,10 +143,10 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
       } catch (err: any) {
         if (!allowFallback) {
           this.logger.error(
-            `Error al encolar en BullMQ (entorno: ${nodeEnv}, fallback permitido: ${allowFallback}) para exportación ${exportId}: ${err?.message}`,
+            `Error al encolar en BullMQ (entorno: ${rawEnv}, fallback permitido: ${allowFallback}) para exportación ${exportId}: ${err?.message}`,
           );
           throw new DossierQueueUnavailableError(
-            `Fallo al encolar en BullMQ: ${err?.message}. En entornos ${nodeEnv} no se permite procesamiento volátil sin Redis.`,
+            `Fallo al encolar en BullMQ: ${err?.message}. En entornos ${rawEnv || "no identificados"} no se permite procesamiento volátil sin Redis.`,
           );
         }
         this.logger.warn(
@@ -153,13 +155,13 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
       }
     }
 
-    // Comprobación estricta de entorno para fallback
+    // Comprobación estricta de entorno para fallback (seguro por defecto)
     if (!allowFallback) {
       this.logger.error(
-        `[CRITICAL] Intento de encolamiento sin Redis/BullMQ en entorno no autorizado (NODE_ENV=${nodeEnv}, ENABLE_IN_MEMORY_QUEUE_FALLBACK=${enableFallbackConfig}) para exportación ${exportId}.`,
+        `[CRITICAL] Intento de encolamiento sin Redis/BullMQ en entorno no autorizado (NODE_ENV=${rawEnv}, ENABLE_IN_MEMORY_QUEUE_FALLBACK=${enableFallbackConfig}) para exportación ${exportId}.`,
       );
       throw new DossierQueueUnavailableError(
-        `El servicio persistente de colas (Redis/BullMQ) no se encuentra disponible. El modo fallback en memoria está estrictamente deshabilitado en este entorno (NODE_ENV=${nodeEnv}).`,
+        `El servicio persistente de colas (Redis/BullMQ) no se encuentra disponible. El modo fallback en memoria está estrictamente deshabilitado en este entorno (NODE_ENV=${rawEnv || "indefinido"}).`,
       );
     }
 
@@ -234,11 +236,13 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
         }
 
         // 3. Si el job no existe en BullMQ o el tiempo sin actividad supera el umbral, declarar huérfano
-        this.logger.warn(
-          `Recuperando exportación huérfana '${exp.id}' (worker: ${exp.processingWorkerId || "n/a"}, inactiva por ${Math.round(elapsedMs / 1000)}s). Marcando como FAILED para permitir reintento seguro.`,
-        );
-        await this.prisma.processDossierExport.update({
-          where: { id: exp.id },
+        // Actualización condicional y transaccional atómica para evitar colisiones entre múltiples workers
+        const updateResult = await this.prisma.processDossierExport.updateMany({
+          where: {
+            id: exp.id,
+            status: "PROCESSING",
+            lastHeartbeatAt: exp.lastHeartbeatAt, // Guardia optimista: asegura que otra instancia no haya refrescado en paralelo
+          },
           data: {
             status: "FAILED",
             errorMessage:
@@ -246,6 +250,12 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
             lastHeartbeatAt: new Date(),
           },
         });
+
+        if (updateResult.count > 0) {
+          this.logger.warn(
+            `Recuperada exportación huérfana '${exp.id}' (worker: ${exp.processingWorkerId || "n/a"}, inactiva por ${Math.round(elapsedMs / 1000)}s).`,
+          );
+        }
       }
     } catch (err: any) {
       this.logger.error(`Error en recuperación de exportaciones huérfanas: ${err?.message}`);

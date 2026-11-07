@@ -40,6 +40,7 @@ export class ProcessDossierExportService {
       throw new Error(`Registro de exportación '${exportId}' no encontrado`);
     }
 
+    let heartbeatTimer: NodeJS.Timeout | null = null;
     try {
       // 1. Estado inicial: PROCESSING con asignación de worker y heartbeat
       await this.prisma.processDossierExport.update({
@@ -52,6 +53,21 @@ export class ProcessDossierExportService {
           lastHeartbeatAt: new Date(),
         },
       });
+
+      // Heartbeat periódico cada 15 segundos para mantener activo el lease durante operaciones largas
+      heartbeatTimer = setInterval(async () => {
+        try {
+          await this.prisma.processDossierExport.updateMany({
+            where: { id: exportId, status: "PROCESSING" },
+            data: { lastHeartbeatAt: new Date() },
+          });
+        } catch {
+          // Ignorar micro-interrupciones de red durante el ciclo de heartbeat
+        }
+      }, 15000);
+      if (heartbeatTimer.unref) {
+        heartbeatTimer.unref();
+      }
 
       // 2. Construir Manifiesto Preliminar
       const manifest = await this.manifestService.build({
@@ -393,6 +409,10 @@ export class ProcessDossierExportService {
       });
 
       throw error;
+    } finally {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
     }
   }
 }

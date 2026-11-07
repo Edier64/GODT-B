@@ -48,7 +48,10 @@ export class DossierQueueUnavailableError extends Error {
 }
 
 export interface DossierSignatureItem {
+  attestationId?: string;
   participantId?: string;
+  documentInstanceId?: string;
+  versionNumber?: number;
   signerRole: string;
   signerName: string;
   signerDocument?: string | null;
@@ -57,6 +60,7 @@ export interface DossierSignatureItem {
   documentPdfSha256: string;
   signatureEvidenceSha256: string | null;
   attestationDigest: string;
+  attestationDeclaration?: string;
   snapshotSha256?: string | null;
   hasCryptographicSignature: boolean;
   attestationLevel: "ATESTA_MANUAL_INTERNA" | "FIRMA_ELECTRONICA_SIMPLE" | "DIGITAL_CERTIFICADA_BLOQUEADA";
@@ -195,10 +199,35 @@ export interface HardenedVerificationReport {
 }
 
 /**
+ * Validador de conformidad Unicode (RFC 8785 Sección 3.2.2.2).
+ * Detecta y rechaza surrogates huérfanos (lone surrogates U+D800 a U+DFFF sin pareja válida).
+ */
+export function containsLoneSurrogate(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      if (i + 1 < str.length) {
+        const next = str.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          i++; // Pareja surrogate válida (ej. emoji astral)
+          continue;
+        }
+      }
+      return true; // High surrogate sin pareja posterior
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      return true; // Low surrogate sin pareja previa
+    }
+  }
+  return false;
+}
+
+/**
  * Serialización determinista y canónica de estructuras JSON conforme a RFC 8785 (JCS).
  * - Claves ordenadas recursivamente por unidades de código UTF-16 (Sección 3.2.3).
  * - Arrays conservan su orden semántico establecido.
  * - Rechaza valores NaN e Infinity conforme a restricciones I-JSON (Sección 3.2.2.3).
+ * - Rechaza Unicode inválido y surrogates huérfanos (Sección 3.2.2.2).
  * - Normaliza cero negativo (-0) a "0".
  * - Serialización exacta de números según reglas ECMAScript 7.1.12.1.
  * - Codificación UTF-8 y escapes estrictos de cadenas (comillas, barra invertida y caracteres de control U+0000 a U+001F en minúsculas).
@@ -224,7 +253,16 @@ export function canonicalJsonSerialize(
     return obj ? "true" : "false";
   }
   if (typeof obj === "string") {
+    if (containsLoneSurrogate(obj)) {
+      throw new TypeError("RFC 8785: Lone surrogate code point detected: invalid Unicode");
+    }
     return JSON.stringify(obj);
+  }
+  if (typeof obj === "bigint") {
+    return obj.toString();
+  }
+  if (typeof obj === "symbol" || typeof obj === "function") {
+    return "null";
   }
   if (Array.isArray(obj)) {
     const items = obj.map((item) =>
@@ -240,6 +278,13 @@ export function canonicalJsonSerialize(
     const keys = Object.keys(obj)
       .filter((k) => !excludedKeys.has(k) && obj[k] !== undefined)
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    
+    for (const key of keys) {
+      if (containsLoneSurrogate(key)) {
+        throw new TypeError("RFC 8785: Lone surrogate in property name: invalid Unicode");
+      }
+    }
+
     const pairs = keys.map((key) => {
       const val = canonicalJsonSerialize(obj[key], excludedKeys);
       return `${JSON.stringify(key)}:${val}`;
