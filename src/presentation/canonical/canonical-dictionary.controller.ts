@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -72,32 +73,42 @@ export class CanonicalDictionaryController {
     return this.run(() => this.getProcessValues.getValue(processId, fieldKey, user));
   }
 
-  @Get("donation-processes/:id/canonical-values/:fieldKey/history")
+  @Get(["canonical-values/:fieldKey/history", "donation-processes/:id/canonical-values/:fieldKey/history"])
   @ApiOperation({ summary: "Consultar historial de revisiones y mediciones repetibles de un marcador" })
   async getHistory(
-    @Param("id") processId: string,
+    @Param("id") paramProcessId: string | undefined,
     @Param("fieldKey") fieldKey: string,
+    @Query("processId") queryProcessId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    const processId = paramProcessId || queryProcessId || "";
     return this.run(() => this.getProcessValues.getHistory(processId, fieldKey, user));
   }
 
-  @Get("donation-processes/:id/canonical-values/:fieldKey/observations")
+  @Get(["canonical-values/:fieldKey/observations", "donation-processes/:id/canonical-values/:fieldKey/observations"])
   @ApiOperation({ summary: "Consultar serie temporal de observaciones clínicas repetibles (pH, creatinina)" })
   async getObservations(
-    @Param("id") processId: string,
+    @Param("id") paramProcessId: string | undefined,
     @Param("fieldKey") fieldKey: string,
+    @Query("processId") queryProcessId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    const processId = paramProcessId || queryProcessId || "";
     return this.run(() => this.getProcessValues.getObservations(processId, fieldKey, user));
   }
 
-  @Get("donation-processes/:id/canonical-values/:fieldKey/conflicts")
+  @Get([
+    "canonical-values/:fieldKey/conflicts",
+    "donation-processes/:id/canonical-values/:fieldKey/conflicts",
+    "donation-processes/:id/canonical-values/conflicts",
+  ])
   @ApiOperation({ summary: "Consultar conflictos activos de valores canónicos en el proceso" })
   async getConflicts(
-    @Param("id") processId: string,
+    @Param("id") paramProcessId: string | undefined,
+    @Query("processId") queryProcessId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    const processId = paramProcessId || queryProcessId || "";
     return this.run(() => this.getProcessValues.getConflicts(processId, user));
   }
 
