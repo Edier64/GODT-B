@@ -85,6 +85,7 @@ export class InitiateProcessDocumentUseCase {
     if (!templateVersionId) {
       const templateCode =
         (document.rules as Record<string, unknown> | null)?.templateCode as string | undefined ||
+        (document as any).templateCode ||
         document.documentCode.toLowerCase();
 
       const template = await this.prisma.documentTemplate.findFirst({

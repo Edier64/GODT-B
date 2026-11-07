@@ -184,7 +184,7 @@ export const OFFICIAL_REGIONAL_3_POSITIONS: ReadonlyArray<PackagePositionDefinit
     orderIndex: 6,
     defaultApplicability: "APLICABLE",
     rules: { relationType: "REQUIRED", dependsOn: "ANEXO_4" },
-    templateCode: "anexo-6-extraccion-componentes-v0",
+    templateCode: "anexo_6",
   },
   {
     positionNumber: 7,
