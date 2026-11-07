@@ -42,7 +42,17 @@ describeIntegration("Document engine persistence", () => {
       await prisma.templateVersion.delete({ where: { id: versionId } });
     if (templateId)
       await prisma.documentTemplate.delete({ where: { id: templateId } });
-    if (donorId) await prisma.donorRecord.delete({ where: { id: donorId } });
+    if (donorId) {
+      await prisma.documentFieldProvenance.deleteMany({
+        where: { responseRevision: { documentInstance: { donorId } } },
+      });
+      await prisma.ocrExtractedField.deleteMany({ where: { donorId } });
+      await prisma.ocrProcessingJob.deleteMany({
+        where: { sourceDocument: { donorId } },
+      });
+      await prisma.sourceDocument.deleteMany({ where: { donorId } });
+      await prisma.donorRecord.delete({ where: { id: donorId } });
+    }
     if (userId) {
       await prisma.auditEvent.deleteMany({ where: { actorUserId: userId } });
       await prisma.systemUser.delete({ where: { id: userId } });
@@ -326,5 +336,161 @@ describeIntegration("Document engine persistence", () => {
       expect(t.category).not.toBe("PENDING_HOMOLOGATION");
       expect(t.templateCode).not.toMatch(/POS_NORMATIVA_/i);
     }
+  });
+
+  it("Auditoría G.1.2 — Escenario obligatorio de procedencia: modificación manual nunca conserva OCR_CONFIRMED y campos no modificados conservan procedencia original", async () => {
+    const repository = new PrismaDocumentEngineRepository(prisma as never);
+    const access = {
+      userId,
+      isAdmin: true,
+      institutionalIps: [],
+    };
+
+    // 1. Crear documento fuente, trabajo OCR y campos OCR confirmados para el donante
+    const testDoc = await prisma.sourceDocument.create({
+      data: {
+        donorId,
+        uploadedById: userId,
+        originalFilename: "historia_clinica_test.pdf",
+        mimeType: "application/pdf",
+        documentCategory: "CLINICAL_RECORD",
+        objectStorageKey: `test/${Date.now()}/hc.pdf`,
+        sha256Hash: `${Date.now()}`.padEnd(64, "a"),
+        status: "PROCESSED",
+      },
+    });
+
+    const job = await prisma.ocrProcessingJob.create({
+      data: {
+        sourceDocumentId: testDoc.id,
+        requestedById: userId,
+        providerName: "LOCAL_TESSERACT",
+        status: "COMPLETADO",
+        correlationId: `corr-job-${Date.now()}`,
+      },
+    });
+
+    const ocrField1 = await prisma.ocrExtractedField.create({
+      data: {
+        ocrJobId: job.id,
+        sourceDocumentId: testDoc.id,
+        donorId,
+        canonicalFieldKey: "donor.clinical.blood_group",
+        candidateValue: "O+",
+        confirmedValue: "O+",
+        confidenceScore: 0.98,
+        validationStatus: "CONFIRMADO",
+        validatedById: userId,
+        validatedAt: new Date(),
+      },
+    });
+
+    const ocrField2 = await prisma.ocrExtractedField.create({
+      data: {
+        ocrJobId: job.id,
+        sourceDocumentId: testDoc.id,
+        donorId,
+        canonicalFieldKey: "donor.clinical.rh_factor",
+        candidateValue: "POSITIVO",
+        confirmedValue: "POSITIVO",
+        confidenceScore: 0.99,
+        validationStatus: "CONFIRMADO",
+        validatedById: userId,
+        validatedAt: new Date(),
+      },
+    });
+
+    // 2. Guardar revisión inicial con ambos campos como OCR_CONFIRMED
+    await repository.saveRevision({
+      instanceId,
+      actorUserId: userId,
+      access,
+      responseData: {
+        bloodGroup: "O+",
+        rhFactor: "POSITIVO",
+        notes: "Dato local sin procedencia externa",
+      },
+      sourceProvenance: [
+        {
+          fieldPath: "bloodGroup",
+          canonicalFieldKey: "donor.clinical.blood_group",
+          sourceKind: "OCR_CONFIRMED",
+          sourceDocumentId: testDoc.id,
+          ocrFieldId: ocrField1.id,
+          sourceValue: "O+",
+        },
+        {
+          fieldPath: "rhFactor",
+          canonicalFieldKey: "donor.clinical.rh_factor",
+          sourceKind: "OCR_CONFIRMED",
+          sourceDocumentId: testDoc.id,
+          ocrFieldId: ocrField2.id,
+          sourceValue: "POSITIVO",
+        },
+      ],
+      correlationId: `audit-ocr-init-${Date.now()}`,
+    });
+
+    // 3. Crear nueva revisión modificando manualmente 'bloodGroup' de 'O+' a 'A+',
+    // dejando 'rhFactor' intacto ('POSITIVO') y guardando SIN enviar sourceProvenance
+    await repository.saveRevision({
+      instanceId,
+      actorUserId: userId,
+      access,
+      responseData: {
+        bloodGroup: "A+", // Modificado manualmente por el operador
+        rhFactor: "POSITIVO", // Sin modificaciones
+        notes: "Dato local modificado",
+      },
+      correlationId: `audit-ocr-manual-edit-${Date.now()}`,
+    });
+
+    // 4. Recuperar la nueva revisión y verificar procedencia resultante
+    const instance = await prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: {
+        currentRevision: {
+          include: { provenance: true },
+        },
+      },
+    });
+
+    const currentProv = instance?.currentRevision?.provenance || [];
+    const bloodGroupProv = currentProv.find((p) => p.fieldPath === "bloodGroup");
+    const rhFactorProv = currentProv.find((p) => p.fieldPath === "rhFactor");
+
+    // Verificación de campo modificado manualmente:
+    expect(bloodGroupProv).toBeDefined();
+    expect(bloodGroupProv?.sourceKind).toBe("MANUAL"); // NUNCA debe ser OCR_CONFIRMED
+    expect(bloodGroupProv?.ocrFieldId).toBeNull();
+    expect(bloodGroupProv?.sourceDocumentId).toBeNull();
+    expect(bloodGroupProv?.sourceValue).toBe("A+");
+    expect(bloodGroupProv?.canonicalFieldKey).toBe("donor.clinical.blood_group"); // Mantiene key canónico
+
+    // Verificación de campo sin modificaciones:
+    expect(rhFactorProv).toBeDefined();
+    expect(rhFactorProv?.sourceKind).toBe("OCR_CONFIRMED"); // Conserva la procedencia de OCR
+    expect(rhFactorProv?.ocrFieldId).toBe(ocrField2.id);
+    expect(rhFactorProv?.sourceDocumentId).toBe(testDoc.id);
+    expect(rhFactorProv?.sourceValue).toBe("POSITIVO");
+
+    // Limpieza
+    await prisma.documentFieldProvenance.deleteMany({
+      where: {
+        OR: [
+          { ocrFieldId: { in: [ocrField1.id, ocrField2.id] } },
+          { sourceDocumentId: testDoc.id },
+        ],
+      },
+    });
+    await prisma.ocrExtractedField.deleteMany({
+      where: { id: { in: [ocrField1.id, ocrField2.id] } },
+    });
+    await prisma.ocrProcessingJob.deleteMany({
+      where: { id: job.id },
+    });
+    await prisma.sourceDocument.deleteMany({
+      where: { id: testDoc.id },
+    });
   });
 });

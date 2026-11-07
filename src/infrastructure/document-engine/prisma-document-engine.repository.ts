@@ -22,6 +22,20 @@ const SAFE_SOURCE_KINDS = new Set([
   "CALCULATED",
 ]);
 
+function getNestedValue(obj: Record<string, unknown> | null | undefined, path: string): unknown {
+  if (!obj || typeof obj !== "object") return undefined;
+  const cleanPath = path.startsWith("$.") ? path.slice(2) : path;
+  const segments = cleanPath.split(".");
+  let current: any = obj;
+  for (const seg of segments) {
+    if (current === null || current === undefined || typeof current !== "object") {
+      return undefined;
+    }
+    current = current[seg];
+  }
+  return current;
+}
+
 @Injectable()
 export class PrismaDocumentEngineRepository implements DocumentEngineRepository {
   constructor(
@@ -363,14 +377,28 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
                 input.sourceProvenance,
               );
             } else if (instance.currentRevisionId) {
-              // Carry forward existing provenance from the current revision
+              // Reconciliar y propagar procedencias según modificaciones reales en responseData
               const priorProvenance = await tx.documentFieldProvenance.findMany({
                 where: { responseRevisionId: instance.currentRevisionId },
               });
+              const oldData = (instance.currentRevision?.responseData || {}) as Record<string, unknown>;
+              const newData = (input.responseData || {}) as Record<string, unknown>;
+
               if (priorProvenance.length > 0) {
-                await Promise.all(
-                  priorProvenance.map((p) =>
-                    tx.documentFieldProvenance.create({
+                for (const p of priorProvenance) {
+                  const oldVal = getNestedValue(oldData, p.fieldPath);
+                  const newVal = getNestedValue(newData, p.fieldPath);
+
+                  // 1. Campo eliminado en esta revisión: omitir procedencia
+                  if (newVal === undefined) {
+                    continue;
+                  }
+
+                  // 2. Campo no modificado: conserva exactamente la procedencia original
+                  const isUnchanged = JSON.stringify(oldVal) === JSON.stringify(newVal);
+
+                  if (isUnchanged) {
+                    await tx.documentFieldProvenance.create({
                       data: {
                         responseRevisionId: revision.id,
                         fieldPath: p.fieldPath,
@@ -390,9 +418,31 @@ export class PrismaDocumentEngineRepository implements DocumentEngineRepository 
                         conflictDecision: p.conflictDecision,
                         conflictJustification: p.conflictJustification,
                       },
-                    }),
-                  ),
-                );
+                    });
+                  } else {
+                    // 3. Campo modificado manualmente: NUNCA conservar atribución a OCR ni fuente previa
+                    await tx.documentFieldProvenance.create({
+                      data: {
+                        responseRevisionId: revision.id,
+                        fieldPath: p.fieldPath,
+                        canonicalFieldKey: p.canonicalFieldKey,
+                        sourceKind: "MANUAL",
+                        sourceEntityId: null,
+                        sourceDocumentId: null,
+                        ocrFieldId: null,
+                        sourceValue: newVal as Prisma.InputJsonValue,
+                        validatedById: null,
+                        validatedAt: null,
+                        conflictStatus: "NONE",
+                        conflictDetails: Prisma.DbNull,
+                        conflictResolvedById: null,
+                        conflictResolvedAt: null,
+                        conflictDecision: null,
+                        conflictJustification: null,
+                      },
+                    });
+                  }
+                }
               }
             }
             const result = await tx.documentInstance.update({

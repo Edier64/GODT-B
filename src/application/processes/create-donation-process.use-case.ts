@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
+import { randomBytes } from "node:crypto";
 import {
   CreateDonationProcessInput,
   DonationProcess,
@@ -60,6 +61,7 @@ export class CreateDonationProcessUseCase {
 
     // Resolver el donante: existente o nuevo registro preliminar/provisional
     let resolvedDonorId = input.donorId?.trim();
+    let createdProvisionalDonorId: string | null = null;
     if (resolvedDonorId) {
       const donor = await this.donorRepository.findById(resolvedDonorId);
       if (!donor) {
@@ -69,10 +71,14 @@ export class CreateDonationProcessUseCase {
       }
     } else {
       // Crear un nuevo DonorRecord preliminar de forma limpia y consistente
+      // NOTA AUDITORÍA G.1.2: El RND oficial es emitido por el Instituto Nacional de Salud (INS).
+      // Los códigos provisionales generados internamente se prefijan con 'PROV-RND-' para evitar
+      // colisiones y marcar explícitamente la dependencia institucional pendiente.
       const currentYear = new Date().getFullYear();
+      const randomSuffix = randomBytes(3).toString("hex").toUpperCase();
       const provisionalRnd =
         input.donor?.rndCode?.trim() ||
-        `RND-${currentYear}-${Date.now().toString().slice(-6)}`;
+        `PROV-RND-${currentYear}-${randomSuffix}`;
       const originatingIps =
         input.donor?.originatingIpsName?.trim() || primaryIpsName;
       const clinicalService =
@@ -82,7 +88,7 @@ export class CreateDonationProcessUseCase {
         input.donor?.fullName?.trim() || "Donante en valoración preliminar";
       const documentNumber =
         input.donor?.documentNumber?.trim() ||
-        `PROV-${Date.now().toString().slice(-6)}`;
+        `PROV-DOC-${currentYear}-${randomSuffix}`;
 
       const newDonor = await this.donorRepository.create(
         {
@@ -98,6 +104,8 @@ export class CreateDonationProcessUseCase {
         user.userId,
       );
 
+      createdProvisionalDonorId = newDonor.id;
+
       await this.audit.record({
         actorUserId: user.userId,
         action: "DONOR_CREATED",
@@ -107,6 +115,9 @@ export class CreateDonationProcessUseCase {
         metadata: {
           source: "donation-process-bootstrap",
           originatingIpsName: originatingIps,
+          isProvisionalRnd: !input.donor?.rndCode?.trim(),
+          isProvisionalDocument: !input.donor?.documentNumber?.trim(),
+          institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
         },
       });
 
@@ -147,38 +158,45 @@ export class CreateDonationProcessUseCase {
       }
     }
 
-    const process = await this.repository.create(
-      {
-        ...input,
-        donorId: resolvedDonorId,
-        primaryIpsName,
+    try {
+      const process = await this.repository.create(
+        {
+          ...input,
+          donorId: resolvedDonorId,
+          primaryIpsName,
+          processCode,
+          packageVersionId,
+        },
+        user.userId,
         processCode,
-        packageVersionId,
-      },
-      user.userId,
-      processCode,
-    );
+      );
 
-    // Crear las 23 posiciones de forma idempotente
-    if (this.packageRepository) {
-      await this.packageRepository.createProcessDocuments(process.id, positionsToCreate);
+      // Crear las 23 posiciones de forma idempotente
+      if (this.packageRepository) {
+        await this.packageRepository.createProcessDocuments(process.id, positionsToCreate);
+      }
+
+      await this.audit.record({
+        actorUserId: user.userId,
+        action: "PROCESS_OPENED",
+        entityType: "DONATION_PROCESS",
+        entityId: process.id,
+        correlationId: process.id,
+        metadata: {
+          processCode: process.processCode,
+          donorId: process.donorId,
+          primaryIpsName: process.primaryIpsName,
+          packageVersionId,
+          totalPositions: positionsToCreate.length,
+        },
+      });
+
+      return process;
+    } catch (error) {
+      if (createdProvisionalDonorId && this.donorRepository.delete) {
+        await this.donorRepository.delete(createdProvisionalDonorId).catch(() => {});
+      }
+      throw error;
     }
-
-    await this.audit.record({
-      actorUserId: user.userId,
-      action: "PROCESS_OPENED",
-      entityType: "DONATION_PROCESS",
-      entityId: process.id,
-      correlationId: process.id,
-      metadata: {
-        processCode: process.processCode,
-        donorId: process.donorId,
-        primaryIpsName: process.primaryIpsName,
-        packageVersionId,
-        totalPositions: positionsToCreate.length,
-      },
-    });
-
-    return process;
   }
 }

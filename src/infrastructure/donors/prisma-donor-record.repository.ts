@@ -103,4 +103,8 @@ export class PrismaDonorRecordRepository implements DonorRecordRepository {
       return donor as DonorRecord;
     });
   }
+
+  async delete(id: string): Promise<void> {
+    await this.prisma.donorRecord.delete({ where: { id } });
+  }
 }

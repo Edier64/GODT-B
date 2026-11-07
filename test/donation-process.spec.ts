@@ -418,6 +418,8 @@ describe("DonationProcess Use Cases (Phase A)", () => {
           clinicalService: "UCI / Urgencias (Valoración preliminar)",
           fullName: "Donante en valoración preliminar",
           status: "EN_VALORACION",
+          rndCode: expect.stringMatching(/^PROV-RND-\d{4}-[A-F0-9]{6}$/),
+          documentNumber: expect.stringMatching(/^PROV-DOC-\d{4}-[A-F0-9]{6}$/),
         }),
         coordinatorUser.userId,
       );
@@ -425,8 +427,41 @@ describe("DonationProcess Use Cases (Phase A)", () => {
         expect.objectContaining({
           action: "DONOR_CREATED",
           entityType: "DONOR_RECORD",
+          metadata: expect.objectContaining({
+            institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
+            isProvisionalRnd: true,
+          }),
         }),
       );
+    });
+
+    it("Auditoría G.1.2: debe revertir y eliminar el donante provisional si la creación del proceso falla", async () => {
+      const mockDonorRepoWithDelete: any = {
+        ...mockDonorRepository,
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+
+      const failingRepository: any = {
+        ...mockRepository,
+        create: jest.fn().mockRejectedValue(new Error("Database connection failure")),
+      };
+
+      const useCase = new CreateDonationProcessUseCase(
+        failingRepository,
+        mockDonorRepoWithDelete,
+        mockAuditPort,
+      );
+
+      await expect(
+        useCase.execute(
+          {
+            primaryIpsName: "Hospital Universitario del Valle",
+          },
+          coordinatorUser,
+        ),
+      ).rejects.toThrow("Database connection failure");
+
+      expect(mockDonorRepoWithDelete.delete).toHaveBeenCalled();
     });
 
     it("Caso 2: debe permitir abrir un proceso desde cero especificando datos iniciales del donante", async () => {

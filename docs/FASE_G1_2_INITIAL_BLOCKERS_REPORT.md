@@ -262,3 +262,4 @@ El dashboard principal mostraba tarjetas estáticas o realizaba consultas improv
 Los 5 bloqueos identificados han sido subsanados a cabalidad conforme a las pautas de arquitectura limpia, auditoría criptográfica y usabilidad clínica establecidas para la Regional 3. 
 
 El sistema se encuentra verificado, con 200 pruebas backend (199 aprobadas, 1 omitida), 5 pruebas de contratos frontend aprobadas y compila limpiamente para producción en ambos extremos.
+

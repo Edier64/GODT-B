@@ -9,6 +9,8 @@ import { UpdateDonationProcessUseCase } from "../../application/processes/update
 import { AddProcessInstitutionUseCase } from "../../application/processes/add-institution.use-case";
 import { AddProcessParticipantUseCase } from "../../application/processes/add-participant.use-case";
 import { GetDashboardSummaryUseCase } from "../../application/processes/get-dashboard-summary.use-case";
+import { DASHBOARD_SUMMARY_PORT } from "../../application/processes/dashboard-summary.port";
+import { PrismaDashboardSummaryRepository } from "../../infrastructure/processes/prisma-dashboard-summary.repository";
 import { PrismaDonationProcessRepository } from "../../infrastructure/processes/prisma-donation-process.repository";
 import { DONATION_PROCESS_REPOSITORY } from "../../application/processes/donation-process.repository";
 import { PrismaDonorRecordRepository } from "../../infrastructure/donors/prisma-donor-record.repository";
@@ -29,10 +31,15 @@ import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-p
     AddProcessInstitutionUseCase,
     AddProcessParticipantUseCase,
     GetDashboardSummaryUseCase,
+    PrismaDashboardSummaryRepository,
     PrismaDonationProcessRepository,
     PrismaDonorRecordRepository,
     PrismaAuditEventAdapter,
     PrismaProcessPackageRepository,
+    {
+      provide: DASHBOARD_SUMMARY_PORT,
+      useExisting: PrismaDashboardSummaryRepository,
+    },
     {
       provide: DONATION_PROCESS_REPOSITORY,
       useExisting: PrismaDonationProcessRepository,

@@ -26,6 +26,7 @@ export interface DonorRecordRepository {
     input: UpdateDonorRecordInput,
     audit: AuditEventInput,
   ): Promise<DonorRecord>;
+  delete?(id: string): Promise<void>;
 }
 
 export const DONOR_RECORD_REPOSITORY = Symbol("DONOR_RECORD_REPOSITORY");
