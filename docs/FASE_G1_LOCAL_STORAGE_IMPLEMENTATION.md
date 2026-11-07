@@ -110,3 +110,4 @@ model SourceDocument {
 ## 5. CONCLUSIÓN
 
 El adaptador `LocalPrivateStorageAdapter` cumple la totalidad de los requisitos técnicos de la Fase G.1: separación clara de originales y derivados, escritura atómica segura, control de duplicados por hash SHA-256 e inmunidad ante ataques de salto de directorio.
+

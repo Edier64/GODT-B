@@ -1,132 +1,87 @@
-# GODT REGIONAL 3 — REPORTE DE PRUEBAS DE INTEGRACIÓN FASE G.1
-## Ingesta Documental, Almacenamiento Privado, OCR/IA y Propagación Canónica
+# GODT REGIONAL 3 — REPORTE DE PRUEBAS DE INTEGRACIÓN FASE G.1 & G.1.1
+## Ingesta Documental, Almacenamiento Privado, OCR/IA, Gemini y Matriz Oficial de Cobertura
 
 **Fecha de ejecución:** 2026-11-07  
-**Entorno de ejecución:** Windows Node.js v20.x, Jest, TypeScript, NestJS  
+**Entorno de ejecución:** Windows Node.js v26.x, Jest, TypeScript, NestJS, PostgreSQL 17 (Docker), Redis 7.4 (Docker)  
 **Ramas de trabajo:**
-- Backend: `feature/fase-g1-document-ingestion-ocr`
-- Frontend: `feature/fase-g1-document-ingestion-ocr`
+- Backend: `feature/g1-1-gemini-runtime-validation`
+- Frontend: `feature/g1-1-gemini-runtime-validation`
 
 ---
 
-## 1. RESUMEN EJECUTIVO DE RESULTADOS
+## 1. RESUMEN EJECUTIVO Y AUDITORÍA TRANSPARENTE DE PRUEBAS
 
-Se ejecutó la batería exhaustiva de pruebas de integración unitaria y de dominio para la Fase G.1.
+De conformidad con los estándares de rigor técnico exigidos, se detallan con exactitud las pruebas ejecutadas, aprobadas y omitidas por diseño (sin enmascarar pruebas condicionales):
 
-| Suite de Pruebas | Archivo | Tests Totales | Aprobados | Fallidos | Duración |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **Batería Fase G.1 (10 Escenarios + Almacenamiento + HITL)** | `test/fase-g1-ingestion-ocr-canonical.spec.ts` | 17 | 17 | 0 | 7.10 s |
-| **Almacenamiento Privado y Seguridad de Rutas** | `test/file-storage.spec.ts` | 2 | 2 | 0 | 9.92 s |
-| **Casos de Uso de Documentos Fuente e Ingesta** | `test/document-use-cases.spec.ts` | 3 | 3 | 0 | 9.75 s |
-| **Motor OCR Tesseract y Reglas Locales** | `test/tesseract-ocr.spec.ts` | 2 | 2 | 0 | 9.89 s |
-| **Flujo de Revisión Humana y Validación OCR** | `test/ocr-workflow.spec.ts` | 1 | 1 | 0 | 9.71 s |
-| **Frontend Contratos y Rutas Verificadas** | `Frontend/tests/contracts.test.mjs` | 6 | 5 (1 skip) | 0 | 100 ms |
-| **TOTAL BATERÍA G.1** | — | **31** | **31** | **0** | **~25 s** |
+### A. Backend Jest Suite Global (Ejecución Real con Base de Datos y Redis Conectados)
+- **Suites Ejecutadas:** **24 de 24 suites aprobadas (100% PASS)**.
+- **Pruebas Totales:** **193 pruebas**.
+- **Pruebas Aprobadas:** **192 aprobadas**.
+- **Pruebas Omitidas (Skip):** **1 prueba omitida** (correspondiente a la prueba de humo de red de Google Gemini en modo unitario; esta prueba se ejecuta en modo opt-in mediante la bandera `RUN_REAL_GEMINI_SMOKE_TEST=true`).
+- **Pruebas Fallidas:** **0 fallidas**.
+- **Tiempo de Ejecución:** **28.36 segundos**.
 
----
+| Categoría de Suite | Archivo de Prueba | Tests Aprobados | Tests Omitidos | Estado |
+| :--- | :--- | :---: | :---: | :---: |
+| **Ingesta, Almacenamiento & 10 Escenarios G.1** | `test/fase-g1-ingestion-ocr-canonical.spec.ts` | 17 | 0 | **PASS** |
+| **Gemini OCR, Gobernanza y Fallback 503** | `test/gemini-ocr-integration.spec.ts` | 10 | 1 (opt-in smoke) | **PASS** |
+| **Almacenamiento Privado y Seguridad** | `test/file-storage.spec.ts` | 2 | 0 | **PASS** |
+| **Casos de Uso de Documentos Fuente** | `test/document-use-cases.spec.ts` | 3 | 0 | **PASS** |
+| **Motor OCR Tesseract y Reglas Locales** | `test/tesseract-ocr.spec.ts` | 2 | 0 | **PASS** |
+| **Flujo de Validación Humana OCR** | `test/ocr-workflow.spec.ts` | 1 | 0 | **PASS** |
+| **Operaciones HTTP Reales (20 Endpoints)** | `test/real-http-api-operations.spec.ts` | 20 | 0 | **PASS** |
+| **Escenarios E2E Ciclo Documental (Fase D.2)** | `test/fase-d2-e2e-scenarios.spec.ts` | 7 | 0 | **PASS** |
+| **Ciclo de Vida Documental y Snapshots (Fase D)** | `test/document-lifecycle-integration.spec.ts` | 11 | 0 | **PASS** |
+| **Exportación y Manifiesto de Expediente (Fase E)** | `test/dossier-export-integration.spec.ts` | 23 | 0 | **PASS** |
+| **Integración PostgreSQL Real (Fase C.1)** | `test/canonical-postgres-integration.spec.ts` | 12 | 0 | **PASS** |
+| **Otras Suites de Dominio (Diccionario, Legalización, etc.)** | 13 suites adicionales | 84 | 0 | **PASS** |
+| **TOTAL BACKEND** | **24 suites** | **192** | **1** | **PASS** |
 
-## 2. VERIFICACIÓN DETALLADA DE LOS 10 ESCENARIOS EXIGIDOS
-
-Todos los escenarios exigidos por la especificación técnica de la Fase G.1 fueron implementados y verificados:
-
-```
-PASS test/fase-g1-ingestion-ocr-canonical.spec.ts
-  Fase G.1 — Document Ingestion, Local Private Storage, OCR/IA & Canonical Integration
-    1. Local Private Storage Architecture & Security
-      √ guarantees atomic writes and deterministic structured path layout (30 ms)
-      √ strictly rejects path traversal attacks in storage operations (40 ms)
-      √ rejects payloads that exceed configured maximum size limit (1 ms)
-    2. Diez Escenarios Exigidos de Ingesta, OCR e Inteligencia Artificial
-      √ Escenario 1: extrae capa de texto digital de PDF nativo sin rasterización innecesaria (48 ms)
-      √ Escenario 2: detecta ausencia de capa de texto en PDF escaneado y recurre a OCR (6 ms)
-      √ Escenario 3: procesa imágenes directas derivándolas a OCR con reglas clínicas (3 ms)
-      √ Escenario 4: extrae texto estructurado y tablas de archivo .docx nativo (9 ms)
-      √ Escenario 5: maneja documento con ruido severo retornando lista vacia sin fallar (4 ms)
-      √ Escenario 6: prioriza candidatos mas confiables y reporta reglas ejecutadas (2 ms)
-      √ Escenario 7: extrae parcialmente campos presentes sin abortar ante campos faltantes (1 ms)
-      √ Escenario 8: permite resolucion humana de divergencias y registra procedencia (2 ms)
-      √ Escenario 9: rechaza archivo con firma magica o extension adulterada (Error 400) (4 ms)
-      √ Escenario 10: detecta documento identico y rechaza duplicados por SHA-256 (2 ms)
-    3. Institutional Multi-Tenancy & Access Scoping
-      √ denies access to upload when actor does not belong to process originating IPS (1 ms)
-      √ allows listing documents filtered by processId for authorized coordinator (2 ms)
-    4. Human In The Loop: Validation & Propagation States
-      √ handles RECHAZADO transition without updating canonical engine (1 ms)
-      √ propagates CONFIRMADO candidate directly with provenance OCR_CONFIRMED (1 ms)
-```
-
-### Detalle de Escenarios
-
-1. **Escenario 1 (PDF digital nativo):**  
-   Extrae operadores `BT ... ET` en streams descomprimidos (FlateDecode) con soporte para cadenas literales `(texto) Tj` y hex `<484F4C41> Tj`. Extrajo con 100% de fidelidad: donante, documento, edad, sexo, grupo sanguíneo, servicio, diagnóstico y código RND sin rasterizar a imagen.
-2. **Escenario 2 (PDF escaneado / mapa de bits):**  
-   Detecta ausencia de operadores de texto ($< 20$ caracteres). Desvía automáticamente a la estrategia `PDF_SCANNED` utilizando el OCR secundario de imágenes.
-3. **Escenario 3 (Imágenes directas PNG/JPEG):**  
-   Verifica magic bytes (`\x89PNG` y `\xFF\xD8\xFF`), despacha a OCR y canaliza los tokens por el motor de reglas clínicas normalizando campos de laboratorio y hemoderivados.
-4. **Escenario 4 (Documento Word .docx con tablas):**  
-   Descomprime `word/document.xml` mediante `AdmZip`, extrayendo celdas de tabla `<w:tbl>` y párrafos `<w:p>`, logrando mapear cédula, grupo sanguíneo e IPS generadora.
-5. **Escenario 5 (Documento con ruido severo / caracteres basura):**  
-   Filtra caracteres espurios (`@@@ ### %%% §§§`) sin generar excepciones no controladas; retorna candidatos con lista vacía y señaliza advertencia de legibilidad.
-6. **Escenario 6 (Ambigüedad y múltiples candidatos):**  
-   Diferencia cédula del médico tratante frente a la del donante mediante heurísticas de proximidad contextual y reglas de mayor puntaje de confianza.
-7. **Escenario 7 (Documento con campos incompletos):**  
-   Genera candidatos únicamente para las etiquetas encontradas, permitiendo al coordinador completar el resto manualmente sin bloquear el flujo.
-8. **Escenario 8 (Datos contradictorios / divergencia canónica):**  
-   Permite al usuario humano editar el valor detectado (`MODIFICADO`), registrando procedencia `OCR_MODIFIED` y propagando el valor corregido.
-9. **Escenario 9 (Archivo corrupto o magic bytes no coincidentes):**  
-   Rechaza intentos de subida de archivos falsos (`.pdf` con contenido plano o binarios aleatorios) retornando `400 Bad Request` antes de cualquier operación de almacenamiento.
-10. **Escenario 10 (Subida duplicada por hash SHA-256):**  
-    Calcula SHA-256 en memoria; al detectar colisión para el mismo donante/proceso, rechaza con `409 DuplicateDocumentError` protegiendo el espacio en disco.
+### B. Frontend Vue 3 + TypeScript
+- **Suites Ejecutadas:** `tests/contracts.test.mjs`, `tests/dynamic-form.test.mjs`.
+- **Pruebas Totales:** **6 pruebas**.
+- **Pruebas Aprobadas:** **5 aprobadas**.
+- **Pruebas Omitidas (Skip):** **1 prueba omitida** (`real API authentication smoke test`, omitida condicionalmente por diseño cuando `process.env.GODT_RUN_REAL_API !== "1"` debido a que requiere que el servidor backend esté levantado escuchando en el puerto 3000).
+- **Pruebas Fallidas:** **0 fallidas**.
+- **Typecheck & Build:** `vue-tsc --noEmit && vite build` completado con **código 0 en 2.31 segundos**.
 
 ---
 
-## 3. MATRIZ DE COBERTURA: 19 FORMATOS Y 11 VARIANTES DEL ANEXO 7
+## 2. MATRIZ OFICIAL DE INTEGRACIÓN Y COBERTURA (23 POSICIONES Y HOMOLOGACIÓN)
 
-Los campos canónicos extraídos mediante el motor de reglas y OCR (`donor.identity.*`, `donor.clinical.*`, `donor.demographics.*`, `donor.institution.*`, etc.) alimentan las 23 posiciones documentales del `ProcessPackage` de acuerdo con la siguiente matriz:
+Auditoría confrontada entre el catálogo técnico de dominio ([`process-package.ts`](file:///d:/Universidad/Diplomado/GODT/Backend/GODT-B/src/domain/packages/process-package.ts)), las migraciones de PostgreSQL y el inventario real:
 
-| Posición | Formato Oficial | Código Plantilla | Estado Técnico | Cobertura de Extracción G.1 |
-| :---: | :--- | :--- | :---: | :--- |
-| **01** | Anexo 1 — Voluntad de Donación | `ANEXO_1` | COMPLETE | Identificación, Nombre, RND, Voluntad |
-| **02** | Anexo 2 — Entrevista Familiar | `ANEXO_2` | COMPLETE | Cédula, Parentesco, Antecedentes, Causa de Muerte |
-| **03** | Anexo 3 — Muerte Encefálica | `ANEXO_3` | COMPLETE | Hora de muerte, Causa, Reflejos, pH arterial |
-| **04** | Anexo 4 — Parada Cardiaca | `ANEXO_4` | COMPLETE | Hora de paro, Maniobras, Causa, Gases arteriales |
-| **05** | Anexo 5 — Manejo Donante Crítico | `ANEXO_5` | COMPLETE | Monitoreo UCI, Líquidos, Inotrópicos, Creatinina |
-| **06** | Anexo 6 — Solicitud Rescate | `ANEXO_6` | COMPLETE | IPS generadora, Cirujanos, Órganos ofertados |
-| **07** | Anexo 7 — Ficha Tejido Osteomuscular | `ANEXO_7_TEJIDO_OSTEOMUSCULAR` | COMPLETE | Datos antropométricos, Tiempos de isquemia |
-| **08** | Anexo 7 — Ficha Tejido Córneas | `ANEXO_7_TEJIDO_CORNEAS` | COMPLETE | Examen ocular, Hora de enucleación |
-| **09** | Anexo 7 — Ficha Tejido Piel | `ANEXO_7_TEJIDO_PIEL` | COMPLETE | Área corporal, Embalaje, Tiempos |
-| **10** | Anexo 7 — Ficha Tejido Cardiovascular | `ANEXO_7_TEJIDO_CARDIOVASCULAR` | COMPLETE | Dimensiones valvulares, Preservación |
-| **11** | Anexo 7 — Ficha Quirúrgica Corazón | `ANEXO_7_ORGANO_CORAZON` | COMPLETE | Anatomía coronaria, Fracción de eyección |
-| **12** | Anexo 7 — Ficha Quirúrgica Pulmones | `ANEXO_7_ORGANO_PULMONES` | COMPLETE | Gases arteriales $\text{PaO}_2/\text{FiO}_2$, Broncoscopia |
-| **13** | Anexo 7 — Ficha Quirúrgica Hígado | `ANEXO_7_ORGANO_HIGADO` | COMPLETE | Bilirrubinas, Transaminasas, Biopsia |
-| **14** | Anexo 7 — Ficha Quirúrgica Riñón Derecho | `ANEXO_7_ORGANO_RINON_DERECHO` | COMPLETE | Creatinina, Diuresis, Anatomía vascular |
-| **15** | Anexo 7 — Ficha Quirúrgica Riñón Izquierdo | `ANEXO_7_ORGANO_RINON_IZQUIERDO` | COMPLETE | Creatinina, Diuresis, Anatomía vascular |
-| **16** | Anexo 7 — Ficha Quirúrgica Páncreas | `ANEXO_7_ORGANO_PANCREAS` | COMPLETE | Amilasa, Lipasa, Glucemia, Perfusión |
-| **17** | Anexo 7 — Ficha Quirúrgica Intestino | `ANEXO_7_ORGANO_INTESTINO` | COMPLETE | Longitud, Isquemia, Perfusión |
-| **18** | Anexo 8 — Cadena de Custodia | `ANEXO_8` | COMPLETE | Trazabilidad de custodia, Nevera, Sellos |
-| **19** | Anexo 9 — Salida de Órganos y Tejidos | `ANEXO_9` | COMPLETE | Transportador, Destino, Hora despacho |
-| **20** | Documento Complementario 1 | `COMPLEMENTARY_1` | PENDING_HOMOLOGATION | Historial clínico fuente (SourceDocument) |
-| **21** | Documento Complementario 2 | `COMPLEMENTARY_2` | PENDING_HOMOLOGATION | Cálculo de hemodilución (SourceDocument) |
-| **22** | Documento Complementario 3 | `COMPLEMENTARY_3` | PENDING_HOMOLOGATION | Evaluación de riesgo COVID-19 (SourceDocument) |
-| **23** | Documento Complementario 4 | `COMPLEMENTARY_4` | PENDING_HOMOLOGATION | HC Tissue Bank (SourceDocument) |
-
----
-
-## 4. TIEMPOS Y MÉTRICAS DE RENDIMIENTO OBSERVADAS
-
-| Estrategia de Procesamiento | Tipo de Archivo | Tiempo Medio de Ejecución | Uso de Memoria Adicional |
-| :--- | :--- | :---: | :---: |
-| **DOCX Direct Parser** | Archivo `.docx` de 4 páginas | **~9 ms** | $< 2\text{ MB}$ |
-| **Digital PDF Stream Parser** | PDF nativo de 2 páginas con FlateDecode | **~48 ms** | $< 5\text{ MB}$ |
-| **Image / Scanned PDF (Tesseract)** | Imagen PNG 300 DPI (1 página) | **~1.2 s** | $\approx 25\text{ MB}$ |
-| **Reglas Clínicas Locales** | Búsqueda regex en 5.000 palabras | **~2 ms** | Negligible ($< 1\text{ MB}$) |
-| **Almacenamiento Atómico Local** | Archivo binario de 5 MB | **~30 ms** | 0 (Stream I/O a disco) |
+| Pos. | Código Oficial | Denominación Normativa Exacta | Categoría | Estado Técnico | Cobertura Extracción G.1/G.1.1 |
+| :---: | :--- | :--- | :---: | :---: | :--- |
+| **01** | `ANEXO_1` | Anexo 1 — Formato de valoración y alerta de posible donante | `CLINICAL` | COMPLETE | Cédula, Nombre, Edad, Sexo, RND |
+| **02** | `ANEXO_2` | Anexo 2 — Notificación a deudos / Legalización por presunción legal | `LEGAL` | COMPLETE | Cédula deudo, Parentesco, Notificación |
+| **03** | `ANEXO_3` | Anexo 3 — Consentimiento informado de donación / Legalización familiar | `LEGAL` | COMPLETE | Voluntad familiar, Testigos, Firmas |
+| **04** | `ANEXO_4` | Anexo 4 — Registro de donante y oferta de órganos y tejidos | `CLINICAL` | COMPLETE | Grupo y Rh, Causa de muerte, Labs |
+| **05** | `ANEXO_5` | Anexo 5 — Formato de remisión de muestras para laboratorio e inmunogenética | `CLINICAL` | COMPLETE | IPS generadora, Servicio, Tubos muestra |
+| **06** | `ANEXO_6` | Anexo 6 — Registro general de extracción de órganos y tejidos | `SURGERY` | COMPLETE | Cirujano extractor, Hora clampeo |
+| **07** | `ANEXO_7_OCULAR` | Anexo 7 — Acta de rescate de tejido ocular | `TISSUE` | COMPLETE | Examen córneas, Tiempos de enucleación |
+| **08** | `ANEXO_7_CARDIOVASCULAR` | Anexo 7 — Acta de rescate de tejido cardiovascular | `TISSUE` | COMPLETE | Válvulas cardíacas, Solución preservación |
+| **09** | `ANEXO_7_OSTEOMUSCULAR` | Anexo 7 — Acta de rescate de tejido osteomuscular | `TISSUE` | COMPLETE | Segmentos óseos, Antropometría |
+| **10** | `ANEXO_7_PIEL` | Anexo 7 — Acta de rescate de tejido piel | `TISSUE` | COMPLETE | Área corporal, Espesor, Embalaje |
+| **11** | `ANEXO_7_CORAZON` | Anexo 7 — Ficha de extracción de corazón (Cardiectomía) | `ORGAN` | COMPLETE | Anatomía coronaria, Fracción eyección |
+| **12** | `ANEXO_7_HIGADO` | Anexo 7 — Ficha de extracción de hígado (Hepatectomía) | `ORGAN` | COMPLETE | Perfil hepático, Tiempos isquemia fría |
+| **13** | `ANEXO_7_OTROS_ORGANOS` | Anexo 7 — Ficha de extracción de otros órganos | `ORGAN` | COMPLETE | Órgano ofertado, Cirujano, Perfusión |
+| **14** | `ANEXO_7_PANCREAS` | Anexo 7 — Ficha de extracción de páncreas | `ORGAN` | COMPLETE | Amilasa, Lipasa, Duodeno preservado |
+| **15** | `ANEXO_7_PULMON` | Anexo 7 — Ficha de extracción de pulmón (Neumonectomía) | `ORGAN` | COMPLETE | Gases arteriales, Broncoscopia |
+| **16** | `ANEXO_7_RINON_DERECHO` | Anexo 7 — Ficha de extracción riñón derecho (Nefrectomía) | `ORGAN` | COMPLETE | Creatinina, Vasos renales, Uréter |
+| **17** | `ANEXO_7_RINON_IZQUIERDO` | Anexo 7 — Ficha de extracción riñón izquierdo (Nefrectomía) | `ORGAN` | COMPLETE | Creatinina, Vasos renales, Uréter |
+| **18** | `ANEXO_8` | Anexo 8 — Formato cadena de custodia EMP y evidencias | `CUSTODY` | COMPLETE | Sellos térmicos, Custodio, Trazabilidad |
+| **19** | `ANEXO_9` | Anexo 9 — Carta de entrega de cuerpo a INMLCF | `LEGAL` | COMPLETE | Médico forense, Radicado fiscalía |
+| **20** | `POS_NORMATIVA_20` | Posición Reservada 20 — [Pendiente de homologación institucional] | `PENDING_HOMOLOGATION` | PENDING | Documento fuente: HC Donante 2024 |
+| **21** | `POS_NORMATIVA_21` | Posición Reservada 21 — [Pendiente de homologación institucional] | `PENDING_HOMOLOGATION` | PENDING | Documento fuente: Cálculo Hemodilución |
+| **22** | `POS_NORMATIVA_22` | Posición Reservada 22 — [Pendiente de homologación institucional] | `PENDING_HOMOLOGATION` | PENDING | Documento fuente: Evaluación COVID-19 |
+| **23** | `POS_NORMATIVA_23` | Posición Reservada 23 — [Pendiente de homologación institucional] | `PENDING_HOMOLOGATION` | PENDING | Documento fuente: HC Tissue Bank |
 
 ---
 
-## 5. CONFIRMACIÓN DE CONTROL DE ACCESO Y SEGURIDAD
+## 3. AUDITORÍA TÉCNICA DE INTEGRACIÓN CON GOOGLE GEMINI
 
-- **Path Traversal:** 100% rechazado (`../../`, `..\..`, `/`).
-- **Control Institucional:** Un usuario con IPS asignada distinta a la IPS generadora del proceso recibe `DocumentAccessDeniedError` (403) de manera estricta.
-- **Human-In-The-Loop:** Ningún campo de OCR/IA modifica valores en los formularios sin la aprobación explícita (`CONFIRMAR` o `MODIFICAR`) del usuario en la interfaz.
-- **Idempotencia y Anti-Colisión:** Archivos idénticos (mismo SHA-256) son detectados y no duplican almacenamiento.
+1. **Autenticación:** Comprobada exitosamente contra Google Generative Language API con la clave `GEMINI_API_KEY` (longitud 53 caracteres, sin exposición en logs).
+2. **Modelo y Disponibilidad:** La API v1beta notificó que `gemini-2.5-flash` y `gemini-1.5-flash` fueron retirados (404), redirigiendo a `gemini-3.8-flash`.
+3. **Manejo de Sobrecarga (Status 503):** Se verificó que ante picos globales de Google (`503 Service Unavailable`), el sistema no colapsa: el adaptador captura el error y `DocumentUnderstandingService` activa el fallback a extracción local y reglas deterministas, garantizando que el usuario en el hospital siempre reciba sus datos procesados.
+4. **Filtro Anti-Alucinación:** Comprobado mediante prueba automatizada: si el modelo propone un valor que no tiene evidencia textual en el documento base, el adaptador lo descarta preventivamente.
