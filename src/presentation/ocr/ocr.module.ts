@@ -4,6 +4,7 @@ import { Queue } from "bullmq";
 import { AuthModule } from "../auth/auth.module";
 import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
 import { DocumentsModule } from "../documents/documents.module";
+import { CanonicalDictionaryModule } from "../canonical/canonical-dictionary.module";
 import { OCR_PROVIDER } from "../../application/ocr/ocr-provider.port";
 import { PDF_RASTERIZER } from "../../application/ocr/pdf-rasterizer.port";
 import { OCR_QUEUE, OCR_QUEUE_NAME } from "../../application/ocr/ocr.queue";
@@ -16,15 +17,25 @@ import { OcrWorker } from "../../infrastructure/ocr/ocr-worker";
 import { StartOcrUseCase } from "../../application/ocr/start-ocr.use-case";
 import { OcrWorkflowUseCase } from "../../application/ocr/ocr-workflow.use-case";
 import { OcrController } from "./ocr.controller";
+import { LocalRulesExtractionProvider } from "../../application/ocr/local-rules-extraction.provider";
+import { DocumentUnderstandingService } from "../../application/ocr/document-understanding.service";
 
 @Module({
-  imports: [ConfigModule, AuthModule, PrismaModule, DocumentsModule],
+  imports: [
+    ConfigModule,
+    AuthModule,
+    PrismaModule,
+    DocumentsModule,
+    CanonicalDictionaryModule,
+  ],
   controllers: [OcrController],
   providers: [
     PrismaOcrRepository,
     GeminiOcrAdapter,
     TesseractOcrAdapter,
     LocalPdfRasterizerAdapter,
+    LocalRulesExtractionProvider,
+    DocumentUnderstandingService,
     OcrWorker,
     StartOcrUseCase,
     OcrWorkflowUseCase,
@@ -57,6 +68,10 @@ import { OcrController } from "./ocr.controller";
       },
     },
   ],
-  exports: [OCR_PROVIDER],
+  exports: [
+    OCR_PROVIDER,
+    DocumentUnderstandingService,
+    LocalRulesExtractionProvider,
+  ],
 })
 export class OcrModule {}

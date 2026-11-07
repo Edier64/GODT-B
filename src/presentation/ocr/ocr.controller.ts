@@ -83,6 +83,20 @@ export class OcrController {
       });
   }
 
+  @Post("processes/:processId/ocr/propagate")
+  @ApiOperation({ summary: "Propagar campo OCR validado a datos canónicos del proceso" })
+  propagateToProcess(
+    @Param("processId") processId: string,
+    @Body() input: PropagateOcrFieldDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.workflow
+      .propagateToProcess(processId, input.fieldId, actor)
+      .catch((error: unknown) => {
+        throw this.toHttp(error);
+      });
+  }
+
   private toHttp(error: unknown): HttpException {
     if (error instanceof OcrAccessDeniedError)
       return new HttpException("OCR access denied", HttpStatus.FORBIDDEN);

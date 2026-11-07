@@ -3,7 +3,7 @@ export interface OcrCandidate {
   candidateValue: string;
   confidenceScore: number;
   pageNumber?: number;
-  boundingBox?: Record<string, number>;
+  boundingBox?: Record<string, unknown>;
 }
 
 export interface OcrProviderPort {
