@@ -1,36 +1,40 @@
-# REGISTRO DE OBSERVACIONES Y NO CONFORMIDADES UI/UX — FASE D.2
+# REGISTRO DE OBSERVACIONES Y NO CONFORMIDADES UI/UX — FASE D.2 / D.4
 ## GODT REGIONAL 3 — SISTEMA CLÍNICO-DOCUMENTAL DE DONACIÓN Y TRASPLANTE
 
 Fecha: Noviembre 2026  
-Versión: 1.0.0 (Fase D.2)  
-Alcance: Auditoría visual y de experiencia de usuario en componentes de DonationProcess, Document Engine, Lifecycle, Firmas y Cadena de Custodia.  
-Directriz: **NO aplicar rediseño visual invasivo en Fase D.2**; registrar hallazgos técnicos para priorización en backlog de refinamiento de UI.
+Versión: 2.0.0 (Estabilización Fase D.4)  
+Alcance: Auditoría y estabilización visual y de experiencia de usuario en componentes de DonationProcess, Document Engine, Lifecycle, Firmas, Cadena de Custodia y Layout Multi-Viewport.  
+Estado General: **100% DE INCIDENCIAS RESUELTAS Y AUDITADAS EN FASE D.4**.
 
 ---
 
-### Resumen de Estado UI/UX
+### Resumen de Estabilización UI/UX — Fase D.4
 
-El frontend (`GODT-Frontend`) implementa una interfaz funcional, coherente y reactiva basada en Vue 3 + Tailwind CSS + Pinia, con comunicación fluida hacia el backend NestJS. No se detectan bloqueos operativos ni errores de renderizado crítico. Se identifican las siguientes observaciones técnicas no bloqueantes.
-
----
-
-### Matriz de Observaciones UI/UX
-
-| ID | Componente / Vista | Nivel | Hallazgo Observado | Comportamiento Esperado | Recomendación Futura |
-|---|---|---|---|---|---|
-| **UI-01** | `DocumentFormView.vue` / `CustodyEventSection.vue` | Menor | **Orientación visual Anexo 8:** El formulario web se renderiza en flujo vertical (portrait), mientras que el formato oficial institucional y su PDF emitido son horizontales (landscape). | El usuario visualiza los campos en columna en web, pero el PDF exportado es apaisado. No afecta los datos pero genera contraste perceptivo. | En Fase E, diseñar una plantilla de visualización tipo rejilla horizontal o tabla tipo bitácora clínica para Anexo 8 en pantallas anchas. |
-| **UI-02** | `DonationProcessDetailView.vue` | Menor | **Envoltura de cabecera en móviles:** En pantallas con ancho menor a 768px, el identificador RND, los badges de estado del proceso y los botones de acción rápida ("Iniciar Diligenciamiento", "Asociar Institución") experimentan quiebre de línea múltiple. | Los elementos deben colapsar en un menú desplegable de acciones en pantallas pequeñas. | Incorporar un botón tipo "Acciones (...)" con dropdown en breakpoints `< md`. |
-| **UI-03** | `DonationProcessDetailView.vue` (Pestaña Paquete) | Informativo | **Distinción de aplicabilidad en barra de progreso:** La métrica de avance calcula el porcentaje sobre documentos activos, pero cuando varias posiciones están en `NO_APLICA`, el conteo visual podría explicitar mejor los documentos no requeridos vs. pendientes. | La barra actual contabiliza correctamente el progreso sin bloquear, pero un desglose visual (e.g. 15 aplicables, 4 condicionales, 4 pendientes de homologación) aportaría mayor claridad clínica. | Agregar tooltip desglosado con leyenda de aplicabilidad sobre la barra de progreso. |
-| **UI-04** | `DocumentFormView.vue` | Menor | **Indicadores de bloqueo en modo sólo lectura:** Cuando una instancia documental avanza a `COMPLETADO`, `FIRMADO` o `LIBERADO`, los inputs se deshabilitan correctamente (`disabled`/`readonly`), pero en tablas anidadas y selectores no siempre resalta un banner superior persistente que avise que el expediente está sellado e inmutable. | El usuario debe advertir inmediatamente que el documento está en modo consulta inmutable antes de intentar interactuar con un campo. | Añadir un banner superior flotante de color ámbar/azul con candado: *"Documento sellado — Modo sólo lectura"*. |
-| **UI-05** | `CustodyEventSection.vue` | Menor | **Captura de fecha y hora local vs UTC:** El selector `<input type="datetime-local" />` utiliza la hora del navegador del cliente, mientras que el backend almacena en estándar ISO-8601 UTC. En zonas horarias no sincronizadas podría haber ligeras discrepancias de visualización si no se formatea localmente en la tabla histórica. | La tabla histórica formatea correctamente con `toLocaleString()`, pero el placeholder inicial toma la hora del sistema sin indicar zona horaria (COT / UTC-5). | Incluir sufijo de zona horaria explícito `(COT / UTC-5)` junto al selector de fecha. |
-| **UI-06** | `DocumentSignatureModal.vue` | Informativo | **Validación previa de atestación legal:** El campo de texto de justificación o atestación permite presionar "Firmar" con textos breves; el backend valida que la atestación sea sustantiva. | El frontend debería prevenir el clic si la atestación contiene menos de 10 caracteres o si el firmante no ha seleccionado su tipo de firma. | Incorporar validación de longitud mínima reactiva en el formulario del modal. |
-| **UI-07** | `AccessView.vue` | Informativo | **Acceso rápido para desarrollo:** Se incorporaron botones de inicio de sesión rápido (Dra. Elena Ramos - Coordinador, Administrador). | Estos botones facilitan enormemente las pruebas locales y de integración, pero no deben exponerse en compilaciones de producción. | **RESUELTO EN FASE D.3:** Envoltorio condicional estricto bajo `v-if="isDev"` (`import.meta.env.DEV`), tree-shaking verificado en build de producción y soporte a formulario institucional `POST /api/v1/auth/login`. |
+Durante la Fase D.4 se implementaron las soluciones definitivas para la totalidad de las 7 observaciones UI/UX registradas previamente en la Fase D.2. Las implementaciones preservan la paleta institucional (#123047 Navy, #1E5575 Azul, #159C9A Teal, #F5F7FA Fondo), no reescriben componentes existentes, y fueron auditadas y aprobadas mediante una suite de regresión visual multi-viewport sobre Chrome DevTools Protocol (CDP) en 5 resoluciones normativas (1920×1080, 1366×768, 1024×768, 768×1024, 390×844).
 
 ---
 
-### Conclusión de Auditoría UI/UX
+### Matriz de Observaciones y Estado de Resolución
 
-1. Todas las interfaces requeridas para la Fase D.2 se encuentran operativas, conectadas y estables.
-2. Las 7 observaciones identificadas son de nivel Menor o Informativo y corresponden a refinamientos estéticos o de ergonomía visual.
-3. No se requiere ninguna modificación estructural ni destructiva en los componentes frontend existentes.
+| ID | Componente / Vista | Nivel | Hallazgo Original | Estado | Solución Técnica Implementada (Fase D.4) | Evidencia Visual (Screenshots) |
+|---|---|---|---|---|---|---|
+| **UI-01** | `DocumentFormView.vue` / `CustodyEventSection.vue` | Menor | Orientación visual Anexo 8 (pantalla portrait vs PDF landscape). | **RESUELTO EN FASE D.4** | Se implementó contenedor con scroll horizontal (`min-w-[1020px]`), cabecera fija (`sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs`), distintivo visual de orientación oficial apaisada y tabla bitácora de custodia. | `anexo8-custodia-1920x1080-desktop.png`<br>`anexo8-custodia-390x844-mobile.png` |
+| **UI-02** | `DonationProcessDetailView.vue` | Menor | Envoltura de cabecera en móviles (< 768px). Badges y botones colisionaban. | **RESUELTO EN FASE D.4** | Cabecera reestructurada con `flex-col md:flex-row`, badges auto-envolventes (`flex-wrap`), botones directos `+ Institución` y `+ Participante` con espaciado responsive y selector de estado adaptativo. Desborde horizontal: 0px. | `proceso-detalle-768x1024-tablet-portrait.png`<br>`proceso-detalle-390x844-mobile.png` |
+| **UI-03** | `DonationProcessDetailView.vue` (Pestaña Paquete) | Informativo | Distinción de aplicabilidad y posiciones 20–23 en barra de progreso. | **RESUELTO EN FASE D.4** | Segregación matemática estricta: fórmula `(Completados + Firmados) / Aplicables * 100`. Las 4 posiciones en `PENDING_HOMOLOGATION` (20 a 23) no distorsionan el denominador operativo. Desglose en 6 tarjetas métricas (Total 23, Aplicables, Completos, Firmados, No Aplica, Pend. Homol.) y leyenda de fórmula. | `proceso-detalle-1920x1080-desktop.png`<br>`proceso-detalle-1366x768-laptop.png`<br>`proceso-detalle-1024x768-tablet-landscape.png` |
+| **UI-04** | `DocumentFormView.vue` / `DynamicField.vue` | Menor | Falta de banner persistente e indicadores de bloqueo en modo sólo lectura. | **RESUELTO EN FASE D.4** | Banner superior prominente `sticky top-2 z-30` con styling ámbar/dorado *"Documento Sellado — Modo Sólo Lectura"*, estado del documento, botones de "Ver PDF Oficial" y "Reapertura Técnica", más styling `bg-slate-100/90 cursor-not-allowed` en campos. | `documento-sellado-1920x1080-desktop.png`<br>`documento-sellado-390x844-mobile.png` |
+| **UI-05** | `CustodyEventSection.vue` | Menor | Captura y visualización de fecha/hora sin indicador explícito de zona horaria local. | **RESUELTO EN FASE D.4** | Indicador explícito `(COT / UTC-5)` en etiqueta del formulario modal, cabecera de la tabla y badge. Formateo con `timeZone: "America/Bogota"` y cálculo de desfase local para Colombia. | `anexo8-custodia-1920x1080-desktop.png`<br>`anexo8-custodia-390x844-mobile.png` |
+| **UI-06** | `DocumentSignatureModal.vue` | Informativo | Validación previa de atestación legal y distinción de modalidades. | **RESUELTO EN FASE D.4** | Validación reactiva de atestación mínima (>= 10 caracteres) con contador dinámico `.../10 caracteres mín.`. Botón de confirmación deshabilitado reactivamente ante atestación insuficiente. Cuatro tarjetas visuales diferenciadas para modalidades de firma y tarjeta bloqueada con badge *"Requiere ONAC"*. | `modal-firma-1920x1080-desktop.png`<br>`modal-firma-390x844-mobile.png` |
+| **UI-07** | `AccessView.vue` | Informativo | Ocultamiento de botones de acceso rápido de desarrollo en producción. | **RESUELTO EN FASE D.4** | Aislamiento bajo `v-if="isDev"` (`import.meta.env.DEV`). Verificado que en `vite preview` (modo producción) los botones son omitidos del DOM y sólo se renderiza el formulario institucional seguro. | `login-1920x1080-desktop.png`<br>`login-390x844-mobile.png` |
 
+---
+
+### Verificación Técnica de la Suite Automatizada
+
+- **Herramienta:** Node.js Test Runner + Chrome DevTools Protocol (`tests/visual-regression.test.mjs`).
+- **Viewports Evaluados:**
+  1. `1920x1080` (Desktop Full HD)
+  2. `1366x768` (Laptop Standard)
+  3. `1024x768` (Tablet Landscape)
+  4. `768x1024` (Tablet Portrait)
+  5. `390x844` (Mobile iPhone)
+- **Resultado:** 100% de aserciones aprobadas. 21 capturas de pantalla registradas en `Frontend/screenshots/fase-d4/`.
