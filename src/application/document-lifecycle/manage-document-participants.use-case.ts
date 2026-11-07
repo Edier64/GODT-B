@@ -97,7 +97,6 @@ export class ManageDocumentParticipantsUseCase {
       metadata: {
         instanceId: instance.id,
         signerRole: participant.signerRole,
-        fullName: participant.fullName,
         signatureRequired: participant.signatureRequired,
       },
     });

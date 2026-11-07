@@ -12,7 +12,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --forceExit",
     "test:integration": "jest --config ./test/jest-integration.json --runInBand",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand --forceExit",
@@ -22,6 +22,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "document:register-anexo-6": "ts-node scripts/register-anexo-6.ts",
+    "seed:templates": "ts-node scripts/seed-official-templates.ts",
     "token:dev": "ts-node scripts/seed-dev-users-and-tokens.ts"
   },
   "dependencies": {
