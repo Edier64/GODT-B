@@ -141,6 +141,7 @@ model SystemUser {
   signaturesRegistered  DocumentSignature[]       @relation("SignatureRegistrar")
   custodyEventsRecorded CustodyEvent[]            @relation("CustodyEventRecorder")
   custodyEventsVerified CustodyEvent[]            @relation("CustodyIntegrityVerifier")
+  dossierExports        ProcessDossierExport[]    @relation("DossierExportRequester")
 
   @@map("SYSTEM_USER")
 }
@@ -548,6 +549,7 @@ model DonationProcess {
   canonicalHistory ProcessCanonicalHistory[]
   generatedPdfDocuments GeneratedPdfDocument[]
   custodyEvents   CustodyEvent[]
+  dossierExports  ProcessDossierExport[]
 
   @@index([status])
   @@index([donorId])
@@ -835,5 +837,36 @@ model CustodyEvent {
   @@unique([documentInstanceId, sequenceNumber])
   @@index([processId, sequenceNumber])
   @@map("CUSTODY_EVENT")
+}
+
+model ProcessDossierExport {
+  id                         String           @id @default(uuid()) @db.Uuid
+  processId                  String           @map("process_id") @db.Uuid
+  requestedById              String           @map("requested_by_id") @db.Uuid
+  status                     String           @default("PENDING") @db.VarChar(50) // PENDING, PROCESSING, COMPLETED, FAILED, EXPIRED
+  exportType                 String           @default("FULL_ZIP") @map("export_type") @db.VarChar(50) // FULL_ZIP, CONSOLIDATED_PDF, INDEX_ONLY
+  includeSourceDocuments     Boolean          @default(false) @map("include_source_documents")
+  selectedDocumentCodes      String[]         @default([]) @map("selected_document_codes")
+  selectedSourceDocumentIds  String[]         @default([]) @map("selected_source_document_ids")
+  progressPercent            Int              @default(0) @map("progress_percent")
+  currentStep                String?          @map("current_step") @db.VarChar(100)
+  consolidatedPdfStorageKey  String?          @map("consolidated_pdf_storage_key") @db.VarChar(500)
+  consolidatedPdfSha256      String?          @map("consolidated_pdf_sha256") @db.Char(64)
+  zipStorageKey              String?          @map("zip_storage_key") @db.VarChar(500)
+  zipSha256                  String?          @map("zip_sha256") @db.Char(64)
+  zipSizeBytes               BigInt?          @map("zip_size_bytes")
+  manifestData               Json?            @map("manifest_data")
+  errorMessage               String?          @map("error_message") @db.Text
+  expiresAt                  DateTime?        @map("expires_at") @db.Timestamptz(6)
+  completedAt                DateTime?        @map("completed_at") @db.Timestamptz(6)
+  createdAt                  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  process                    DonationProcess  @relation(fields: [processId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requestedBy                SystemUser       @relation("DossierExportRequester", fields: [requestedById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([processId, createdAt])
+  @@index([status])
+  @@map("PROCESS_DOSSIER_EXPORT")
 }
 

@@ -13,6 +13,7 @@ import { DonationProcessModule } from "./presentation/processes/donation-process
 import { ProcessPackageModule } from "./presentation/packages/process-package.module";
 import { CanonicalDictionaryModule } from "./presentation/canonical/canonical-dictionary.module";
 import { DocumentLifecycleModule } from "./presentation/document-lifecycle/document-lifecycle.module";
+import { DossierModule } from "./presentation/dossier/dossier.module";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { DocumentLifecycleModule } from "./presentation/document-lifecycle/docum
     ProcessPackageModule,
     CanonicalDictionaryModule,
     DocumentLifecycleModule,
+    DossierModule,
   ],
 })
 export class AppModule {}
