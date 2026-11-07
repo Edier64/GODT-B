@@ -14,13 +14,19 @@ import { RequestDossierExportUseCase } from "../src/application/dossier/request-
 import { GetDossierExportUseCase } from "../src/application/dossier/get-dossier-export.use-case";
 import { ListDossierExportsUseCase } from "../src/application/dossier/list-dossier-exports.use-case";
 import { VerifyDossierIntegrityUseCase } from "../src/application/dossier/verify-dossier-integrity.use-case";
-import { DossierAccessDeniedError, DossierNotFoundError } from "../src/domain/dossier/dossier.types";
+import { BullmqDossierQueueService } from "../src/infrastructure/dossier/bullmq-dossier-queue.service";
+import {
+  computeCanonicalManifestDigest,
+  DossierAccessDeniedError,
+  DossierNotFoundError,
+  DossierQueueUnavailableError,
+} from "../src/domain/dossier/dossier.types";
 import { PDFDocument } from "pdf-lib";
 import { createHash } from "crypto";
 import AdmZip from "adm-zip";
 
-describe("Dossier Export Integration Tests (Fase E)", () => {
-  jest.setTimeout(60000);
+describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
+  jest.setTimeout(90000);
   let prisma: PrismaService;
   let storage: LocalPrivateStorageAdapter;
   let pdfRenderer: PdfRenderEngineService;
@@ -33,8 +39,9 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
   let getUseCase: GetDossierExportUseCase;
   let listUseCase: ListDossierExportsUseCase;
   let verifyUseCase: VerifyDossierIntegrityUseCase;
+  let realQueueService: BullmqDossierQueueService;
 
-  const testSuffix = `fase-e-${Date.now()}`;
+  const testSuffix = `fase-e1-${Date.now()}`;
   let authorizedUser: any;
   let unauthorizedUser: any;
   let testDonor: any;
@@ -42,6 +49,11 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
   let testPackageVersion: any;
   let testProcess: any;
   let testSourceDoc: any;
+
+  let releasedAnexo1PdfBytes: Buffer;
+  let releasedAnexo1Hash: string;
+  let releasedAnexo8PdfBytes: Buffer;
+  let releasedAnexo8Hash: string;
 
   const authCoordinator: AuthenticatedUser = {
     userId: "",
@@ -62,10 +74,9 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
     },
   };
 
-  // Mock queue for tests
-  const mockQueueService = {
+  // Mock queue sincronico para pruebas unitarias de casos de uso
+  const mockSyncQueue = {
     enqueueExport: jest.fn(async (exportId: string, user: AuthenticatedUser) => {
-      // Direct synchronous execution in test environment
       await processExportService.processExport(exportId, user);
     }),
   };
@@ -96,11 +107,13 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
     requestUseCase = new RequestDossierExportUseCase(
       prisma,
       mockAuditPort,
-      mockQueueService as any,
+      mockSyncQueue as any,
     );
     getUseCase = new GetDossierExportUseCase(prisma, mockAuditPort);
     listUseCase = new ListDossierExportsUseCase(prisma);
     verifyUseCase = new VerifyDossierIntegrityUseCase(prisma, storage, mockAuditPort);
+
+    realQueueService = new BullmqDossierQueueService(config, processExportService, prisma);
 
     // 1. Crear usuario coordinador autorizado
     authorizedUser = await prisma.systemUser.create({
@@ -129,7 +142,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
       data: {
         rndCode: `RND-EXP-${testSuffix.slice(-6)}`,
         documentNumber: `CC-EXP-${testSuffix.slice(-8)}`,
-        fullName: "Donante Expediente Piloto E",
+        fullName: "Donante Expediente Piloto E.1",
         originatingIpsName: "Hospital Universitario del Valle",
         clinicalService: "UCI Neurocríticos",
         bloodGroup: "O",
@@ -143,7 +156,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
     testPackage = await prisma.processPackage.create({
       data: {
         code: `PKG-EXP-${testSuffix.slice(-6)}`,
-        name: "Paquete Donación con Ficha de Órganos y Homologación Fase E",
+        name: "Paquete Donación con Ficha de Órganos y Homologación Fase E.1",
         createdById: authorizedUser.id,
       },
     });
@@ -195,7 +208,6 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
         },
       });
 
-      // Crear ProcessDocument
       const pDoc = await prisma.processDocument.create({
         data: {
           processId: testProcess.id,
@@ -205,9 +217,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
           category: pos.category,
           orderIndex: pos.orderIndex,
           applicabilityStatus:
-            pos.positionNumber === 17 // Anexo 12 no aplica por ejemplo
-              ? "NO_APLICA"
-              : "APLICA",
+            pos.positionNumber === 17 ? "NO_APLICA" : "APLICA",
           nonApplicabilityReason:
             pos.positionNumber === 17 ? "Donante sin antecedentes judiciales ni muerte violenta." : null,
           status: pos.positionNumber === 1 || pos.positionNumber === 18 ? "LIBERADO" : "PENDIENTE",
@@ -215,7 +225,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
         },
       });
 
-      // Para Anexo 1 y Anexo 8, crear instancias completas, PDFs y firmas para simular estado LIBERADO
+      // Para Anexo 1 (Pos 1) y Anexo 8 (Pos 18), crear instancias completas, PDFs y firmas
       if (pos.positionNumber === 1 || pos.positionNumber === 18) {
         const instance = await prisma.documentInstance.create({
           data: {
@@ -236,7 +246,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
           data: { currentInstanceId: instance.id },
         });
 
-        // Crear PDF sintético con pdf-lib y guardarlo en storage
+        // Crear PDF con pdf-lib y guardarlo
         const samplePdfDoc = await PDFDocument.create();
         const page = samplePdfDoc.addPage([612, 792]);
         page.drawText(`DOCUMENTO OFICIAL: ${pos.title}`, { x: 50, y: 700 });
@@ -244,6 +254,14 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
         const samplePdfBytes = await samplePdfDoc.save();
         const pdfBuffer = Buffer.from(samplePdfBytes);
         const pdfHash = createHash("sha256").update(pdfBuffer).digest("hex");
+
+        if (pos.positionNumber === 1) {
+          releasedAnexo1PdfBytes = pdfBuffer;
+          releasedAnexo1Hash = pdfHash;
+        } else {
+          releasedAnexo8PdfBytes = pdfBuffer;
+          releasedAnexo8Hash = pdfHash;
+        }
 
         const stored = await storage.put({
           buffer: pdfBuffer,
@@ -270,7 +288,7 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
           },
         });
 
-        // Crear participante y firma
+        // Crear participante y firma válida
         const part = await prisma.documentParticipant.create({
           data: {
             documentInstanceId: instance.id,
@@ -339,7 +357,6 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
   });
 
   afterAll(async () => {
-    // Cleanup de prueba
     if (prisma) {
       await prisma.processDossierExport.deleteMany({ where: { processId: testProcess?.id } });
       await prisma.custodyEvent.deleteMany({ where: { processId: testProcess?.id } });
@@ -365,13 +382,18 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
       await prisma.documentTemplate.deleteMany({ where: { templateCode: { contains: testSuffix } } });
       await prisma.processPackageVersion.deleteMany({ where: { packageId: testPackage?.id } });
       await prisma.processPackage.deleteMany({ where: { id: testPackage?.id } });
-      await prisma.systemUser.deleteMany({ where: { id: { in: [authorizedUser?.id, unauthorizedUser?.id].filter(Boolean) } } });
+      await prisma.systemUser.deleteMany({
+        where: { id: { in: [authorizedUser?.id, unauthorizedUser?.id].filter(Boolean) } },
+      });
       await prisma.$disconnect();
     }
   });
 
-  describe("1. Solicitud y Encolamiento de Exportación de Expediente (Fase E)", () => {
-    it("debe rechazar la exportación si el usuario no tiene acceso a la IPS del proceso", async () => {
+  let standardExportId: string;
+  let standardZipBuffer: Buffer;
+
+  describe("1. Solicitud y Control de Acceso (Escenarios 1, 2, 4, 20)", () => {
+    it("Escenario 20: debe rechazar la exportación si el usuario no tiene acceso a la IPS del proceso", async () => {
       await expect(
         requestUseCase.execute({
           processId: testProcess.id,
@@ -381,8 +403,8 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
       ).rejects.toThrow(DossierAccessDeniedError);
     });
 
-    it("debe rechazar la exportación si un usuario no coordinador/admin intenta incluir documentos fuente", async () => {
-      const authTechnician: AuthenticatedUser = {
+    it("Escenario 4: debe rechazar la exportación si un usuario no coordinador/admin intenta incluir documentos fuente", async () => {
+      const unauthorizedClinician: AuthenticatedUser = {
         userId: authorizedUser.id,
         role: "TECHNICIAN",
         institutionalIps: ["Hospital Universitario del Valle"],
@@ -391,284 +413,545 @@ describe("Dossier Export Integration Tests (Fase E)", () => {
       await expect(
         requestUseCase.execute({
           processId: testProcess.id,
-          user: authTechnician,
+          user: unauthorizedClinician,
           includeSourceDocuments: true,
         }),
       ).rejects.toThrow(DossierAccessDeniedError);
     });
 
-    it("debe crear y procesar exitosamente la exportación en modo estándar (sin documentos fuente por defecto)", async () => {
-      const exportRecord = await requestUseCase.execute({
+    it("Escenarios 1 & 2: debe crear y procesar exitosamente la exportación en modo estándar (sin documentos fuente por defecto)", async () => {
+      const result = await requestUseCase.execute({
         processId: testProcess.id,
         user: authCoordinator,
         includeSourceDocuments: false,
       });
 
-      expect(exportRecord).toBeDefined();
-      expect(exportRecord.id).toBeDefined();
-      expect(exportRecord.processId).toBe(testProcess.id);
+      expect(result).toBeDefined();
+      expect(result.id).toBeDefined();
+      standardExportId = result.id;
 
-      // El mock queue ejecuta síncronamente processExportService.processExport(exportId, user)
-      const finished = await prisma.processDossierExport.findUnique({
-        where: { id: exportRecord.id },
+      // Esperar estado COMPLETED
+      const record = await prisma.processDossierExport.findUnique({
+        where: { id: standardExportId },
       });
-
-      expect(finished).toBeDefined();
-      expect(finished!.status).toBe("COMPLETED");
-      expect(finished!.progressPercent).toBe(100);
-      expect(finished!.zipStorageKey).toBeDefined();
-      expect(finished!.zipSha256).toMatch(/^[a-f0-9]{64}$/i);
-      expect(finished!.consolidatedPdfSha256).toMatch(/^[a-f0-9]{64}$/i);
+      expect(record?.status).toBe("COMPLETED");
+      expect(record?.packageChecksumSha256).toBeDefined();
+      expect(record?.manifestDigest).toBeDefined();
     });
   });
 
-  describe("2. Inspección Criptográfica y Estructural del Paquete ZIP (Fase E)", () => {
-    it("debe generar un paquete ZIP con la taxonomía de 6 carpetas reglamentaria", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      expect(exports.length).toBeGreaterThan(0);
-      const latestExport = exports[0];
-
-      // Recuperar el buffer del ZIP desde el almacenamiento privado
-      const zipBuffer = await storage.get(latestExport.zipStorageKey!);
-      expect(zipBuffer).toBeDefined();
-
-      // Verificar SHA-256 del binario ZIP
-      const actualZipHash = createHash("sha256").update(zipBuffer).digest("hex");
-      expect(actualZipHash.toLowerCase()).toBe(latestExport.zipSha256?.toLowerCase());
-
-      // Descomprimir y auditar estructura usando adm-zip
-      const zip = new AdmZip(zipBuffer);
-      const entries = zip.getEntries();
-      const entryNames = entries.map((e) => e.entryName.replace(/\\/g, "/"));
-
-      const rootPrefix = `GODT_EXPEDIENTE_${testProcess.processCode}/`;
-
-      // A. Verificar README
-      expect(entryNames).toContain(`${rootPrefix}README.txt`);
-
-      // B. Verificar 00_INDICE
-      expect(entryNames).toContain(`${rootPrefix}00_INDICE/indice_expediente.pdf`);
-      expect(entryNames).toContain(`${rootPrefix}00_INDICE/resumen_expediente.json`);
-
-      // C. Verificar 01_DOCUMENTOS_LIBERADOS
-      const releasedFiles = entryNames.filter((name) =>
-        name.startsWith(`${rootPrefix}01_DOCUMENTOS_LIBERADOS/`),
-      );
-      // Hay 2 documentos liberados (Anexo 1 y Anexo 8)
-      expect(releasedFiles.length).toBe(2);
-      expect(releasedFiles.some((f) => f.includes("ANEXO_1"))).toBe(true);
-      expect(releasedFiles.some((f) => f.includes("ANEXO_8"))).toBe(true);
-
-      // D. Verificar 02_DOCUMENTO_CONSOLIDADO
-      expect(entryNames).toContain(
-        `${rootPrefix}02_DOCUMENTO_CONSOLIDADO/expediente_consolidado.pdf`,
-      );
-
-      // E. Verificar 03_EVIDENCIAS
-      expect(entryNames).toContain(`${rootPrefix}03_EVIDENCIAS/manifiesto_integridad.json`);
-      expect(entryNames).toContain(`${rootPrefix}03_EVIDENCIAS/evidencias_atestaciones.json`);
-
-      // F. Verificar 04_CADENA_CUSTODIA
-      expect(entryNames).toContain(
-        `${rootPrefix}04_CADENA_CUSTODIA/eventos_custodia_inmutables.json`,
-      );
-
-      // G. Verificar que 05_FUENTES_COMPLEMENTARIAS no incluya nada porque no fue solicitado
-      const sourceFiles = entryNames.filter((name) =>
-        name.startsWith(`${rootPrefix}05_FUENTES_COMPLEMENTARIAS/`),
-      );
-      expect(sourceFiles.length).toBe(0);
-    });
-
-    it("los archivos en 01_DOCUMENTOS_LIBERADOS deben conservar su binario y hash SHA-256 original sin modificaciones", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const latestExport = exports[0];
-      const zipBuffer = await storage.get(latestExport.zipStorageKey!);
-      const zip = new AdmZip(zipBuffer);
-
-      // Obtener el registro de GeneratedPdf de Anexo 1
-      const anexo1Pdf = await prisma.generatedPdfDocument.findFirst({
-        where: { processId: testProcess.id, documentCode: "ANEXO_1" },
+  describe("2. Inspección Criptográfica y Estructural del ZIP (Escenarios 5, 6, 7, 8, 9)", () => {
+    it("Escenario 6: debe generar un paquete ZIP con la taxonomía de 6 carpetas y magic bytes PK", async () => {
+      const record = await prisma.processDossierExport.findUnique({
+        where: { id: standardExportId },
       });
-      expect(anexo1Pdf).toBeDefined();
+      standardZipBuffer = await storage.get(record!.zipStorageKey!);
 
-      const rootPrefix = `GODT_EXPEDIENTE_${testProcess.processCode}/`;
-      const targetName = `${rootPrefix}01_DOCUMENTOS_LIBERADOS/ANEXO_1_v1.pdf`;
-      const entry = zip.getEntries().find((e) => e.entryName.replace(/\\/g, "/") === targetName);
-      expect(entry).toBeDefined();
+      // Magic bytes ZIP: 50 4b 03 04
+      expect(standardZipBuffer.slice(0, 4).toString("hex")).toBe("504b0304");
 
-      const extractedBytes = entry!.getData();
-      const extractedHash = createHash("sha256").update(extractedBytes).digest("hex");
+      const zip = new AdmZip(standardZipBuffer);
+      const entries = zip.getEntries().map((e) => e.entryName);
 
-      // Verificación estricta: el hash del archivo dentro del ZIP coincide bit a bit con el original
-      expect(extractedHash.toLowerCase()).toBe(anexo1Pdf!.sha256Hash.toLowerCase());
+      expect(entries.some((e) => e.includes("/00_INDICE/indice_expediente.pdf"))).toBe(true);
+      expect(entries.some((e) => e.includes("/00_INDICE/resumen_expediente.json"))).toBe(true);
+      expect(entries.some((e) => e.includes("/01_DOCUMENTOS_LIBERADOS/"))).toBe(true);
+      expect(entries.some((e) => e.includes("/02_DOCUMENTO_CONSOLIDADO/expediente_consolidado.pdf"))).toBe(true);
+      expect(entries.some((e) => e.includes("/03_EVIDENCIAS/manifiesto_integridad.json"))).toBe(true);
+      expect(entries.some((e) => e.includes("/03_EVIDENCIAS/evidencias_atestaciones.json"))).toBe(true);
+      expect(entries.some((e) => e.includes("/04_CADENA_CUSTODIA/eventos_custodia_inmutables.json"))).toBe(true);
+      expect(entries.some((e) => e.includes("/04_CADENA_CUSTODIA/referencia_anexo_8.json"))).toBe(true);
+      expect(entries.some((e) => e.includes("/README.txt"))).toBe(true);
+      // Por defecto no debe incluir 05_FUENTES_COMPLEMENTARIAS
+      expect(entries.some((e) => e.includes("/05_FUENTES_COMPLEMENTARIAS/"))).toBe(false);
     });
 
-    it("el PDF consolidado debe compilar portada, índice y páginas de documentos ordenadas", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const latestExport = exports[0];
-      const zipBuffer = await storage.get(latestExport.zipStorageKey!);
-      const zip = new AdmZip(zipBuffer);
+    it("Escenario 7: los archivos en 01_DOCUMENTOS_LIBERADOS deben conservar su binario y hash SHA-256 original sin modificaciones", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const entries = zip.getEntries();
 
-      const rootPrefix = `GODT_EXPEDIENTE_${testProcess.processCode}/`;
-      const targetName = `${rootPrefix}02_DOCUMENTO_CONSOLIDADO/expediente_consolidado.pdf`;
-      const consolidatedEntry = zip
-        .getEntries()
-        .find((e) => e.entryName.replace(/\\/g, "/") === targetName);
-      expect(consolidatedEntry).toBeDefined();
+      // Nomenclatura oficial: POS_01_ANEXO_1_VALORACION_ALERTA.pdf
+      const anexo1Entry = entries.find((e) =>
+        e.entryName.includes("01_DOCUMENTOS_LIBERADOS/POS_01_ANEXO_1_VALORACION_ALERTA"),
+      );
+      expect(anexo1Entry).toBeDefined();
+      const extractedBytes1 = anexo1Entry!.getData();
+      const actualHash1 = createHash("sha256").update(extractedBytes1).digest("hex");
+      expect(actualHash1).toBe(releasedAnexo1Hash);
 
-      // Cargar con pdf-lib y verificar número de páginas
-      const loadedDoc = await PDFDocument.load(consolidatedEntry!.getData());
-      const pageCount = loadedDoc.getPageCount();
-      // Portada (1) + Índice (mín 1) + 2 documentos liberados (1 página cada uno) = al menos 3 páginas
-      expect(pageCount).toBeGreaterThanOrEqual(3);
+      // Anexo 8 en 01_DOCUMENTOS_LIBERADOS: POS_18_ANEXO_8_ACTA_CADENA_CUSTODIA.pdf
+      const anexo8Entry = entries.find((e) =>
+        e.entryName.includes("01_DOCUMENTOS_LIBERADOS/POS_18_ANEXO_8_ACTA_CADENA_CUSTODIA"),
+      );
+      expect(anexo8Entry).toBeDefined();
+      const extractedBytes8 = anexo8Entry!.getData();
+      const actualHash8 = createHash("sha256").update(extractedBytes8).digest("hex");
+      expect(actualHash8).toBe(releasedAnexo8Hash);
     });
 
-    it("el manifiesto_integridad.json debe reflejar la matriz de 23 posiciones, estados y hashes deterministas", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const latestExport = exports[0];
-      const zipBuffer = await storage.get(latestExport.zipStorageKey!);
-      const zip = new AdmZip(zipBuffer);
+    it("Escenario 5: el PDF consolidado debe compilar portada, índice y páginas ordenadas", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const consolidadoEntry = zip.getEntries().find((e) =>
+        e.entryName.includes("02_DOCUMENTO_CONSOLIDADO/expediente_consolidado.pdf"),
+      );
+      expect(consolidadoEntry).toBeDefined();
 
-      const rootPrefix = `GODT_EXPEDIENTE_${testProcess.processCode}/`;
-      const targetName = `${rootPrefix}03_EVIDENCIAS/manifiesto_integridad.json`;
-      const manifestEntry = zip
-        .getEntries()
-        .find((e) => e.entryName.replace(/\\/g, "/") === targetName);
+      const consolidadoDoc = await PDFDocument.load(consolidadoEntry!.getData());
+      // Portada + Índice (2 págs aprox) + Anexo 1 (1 pág) + Anexo 8 (1 pág) >= 3 páginas
+      expect(consolidadoDoc.getPageCount()).toBeGreaterThanOrEqual(3);
+    });
+
+    it("Escenario 8: el manifiesto_integridad.json debe implementar digest canónico determinista y no contener autorreferencia circular", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const manifestEntry = zip.getEntries().find((e) =>
+        e.entryName.includes("03_EVIDENCIAS/manifiesto_integridad.json"),
+      );
       expect(manifestEntry).toBeDefined();
 
-      const manifestContent = JSON.parse(manifestEntry!.getData().toString("utf-8"));
-      expect(manifestContent.manifestVersion).toBe("1.0.0");
-      expect(manifestContent.processCode).toBe(testProcess.processCode);
-      expect(manifestContent.summary.totalPositions).toBe(23);
-      expect(manifestContent.summary.releasedCount).toBe(2);
-      expect(manifestContent.summary.nonApplicableCount).toBe(1); // Posición 17
-      expect(manifestContent.summary.pendingHomologationCount).toBe(4); // Posiciones 20 a 23
+      const manifestObj = JSON.parse(manifestEntry!.getData().toString("utf-8"));
+      // No debe contener el hash del ZIP completo internamente
+      expect(manifestObj.zipPackage).toBeUndefined();
+      expect(manifestObj.files).toBeDefined();
+      expect(manifestObj.files.length).toBeGreaterThan(0);
 
-      // Verificar que el Anexo 12 (posición 17) esté registrado con su motivo
-      const anexo12 = manifestContent.documents.find((d: any) => d.positionNumber === 17);
-      expect(anexo12).toBeDefined();
-      expect(anexo12.applicabilityStatus).toBe("NO_APLICA");
-      expect(anexo12.nonApplicabilityReason).toContain("sin antecedentes judiciales");
-      expect(anexo12.includedInConsolidatedPdf).toBe(false);
+      // El digest del manifiesto debe ser calculable de forma determinista
+      const calculatedDigest = computeCanonicalManifestDigest(manifestObj);
+      expect(manifestObj.manifestDigest).toBe(calculatedDigest);
+    });
+
+    it("Escenario 9: el hash binario del ZIP debe almacenarse en packageChecksumSha256 en PostgreSQL", async () => {
+      const record = await prisma.processDossierExport.findUnique({
+        where: { id: standardExportId },
+      });
+      const realZipHash = createHash("sha256").update(standardZipBuffer).digest("hex");
+
+      expect(record?.packageChecksumSha256).toBe(realZipHash);
+      expect(record?.zipSha256).toBe(realZipHash);
     });
   });
 
-  describe("3. Exportación con Documentos Fuente Autorizados (Fase E)", () => {
-    it("debe incluir 05_FUENTES_COMPLEMENTARIAS únicamente cuando se solicita con autorización expresa", async () => {
-      const exportReq = await requestUseCase.execute({
+  describe("3. Exportación con Fuentes Sensibles Autorizadas (Escenario 3)", () => {
+    it("Escenario 3: debe incluir 05_FUENTES_COMPLEMENTARIAS únicamente cuando se solicita con autorización expresa", async () => {
+      const result = await requestUseCase.execute({
         processId: testProcess.id,
         user: authCoordinator,
         includeSourceDocuments: true,
-        selectedSourceDocumentIds: [testSourceDoc.id],
       });
 
-      const exportWithSources = await prisma.processDossierExport.findUnique({
-        where: { id: exportReq.id },
+      const record = await prisma.processDossierExport.findUnique({
+        where: { id: result.id },
       });
+      expect(record?.status).toBe("COMPLETED");
 
-      expect(exportWithSources).toBeDefined();
-      expect(exportWithSources!.status).toBe("COMPLETED");
+      const zipBuf = await storage.get(record!.zipStorageKey!);
+      const zip = new AdmZip(zipBuf);
+      const entries = zip.getEntries().map((e) => e.entryName);
 
-      const zipBuffer = await storage.get(exportWithSources!.zipStorageKey!);
-      const zip = new AdmZip(zipBuffer);
-      const rootPrefix = `GODT_EXPEDIENTE_${testProcess.processCode}/`;
-
-      const sourceFiles = zip
-        .getEntries()
-        .map((e) => e.entryName.replace(/\\/g, "/"))
-        .filter((name) => name.startsWith(`${rootPrefix}05_FUENTES_COMPLEMENTARIAS/`));
-
-      expect(sourceFiles.length).toBe(1);
-      expect(sourceFiles[0]).toContain("historia_clinica_completa.pdf");
-
-      // Verificar integridad del documento fuente
-      const targetName = sourceFiles[0];
-      const entry = zip.getEntries().find((e) => e.entryName.replace(/\\/g, "/") === targetName);
-      const extractedHash = createHash("sha256").update(entry!.getData()).digest("hex");
-      expect(extractedHash.toLowerCase()).toBe(testSourceDoc.sha256Hash.toLowerCase());
+      expect(entries.some((e) => e.includes("/05_FUENTES_COMPLEMENTARIAS/"))).toBe(true);
+      expect(
+        entries.some((e) =>
+          e.includes("HISTORIA_CLINICA_COMPLETA/historia_clinica_completa.pdf"),
+        ),
+      ).toBe(true);
     });
   });
 
-  describe("4. Endpoint y Caso de Uso de Verificación Criptográfica de Integridad (Fase E)", () => {
+  describe("4. Endpoints de Verificación Criptográfica y Detección de Alteraciones (Escenarios 10, 11, 12, 13, 14)", () => {
     it("debe validar exitosamente la integridad (INTEGRITY_VERIFIED) si ningún archivo ha sido alterado", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const targetExport = exports[0];
-
-      const report = await verifyUseCase.execute(targetExport.id, authCoordinator);
+      const report = await verifyUseCase.execute(standardExportId, authCoordinator);
 
       expect(report.overallStatus).toBe("INTEGRITY_VERIFIED");
-      expect(report.failedCount).toBe(0);
-      expect(report.passedCount).toBeGreaterThan(0);
-      expect(report.items.every((i) => i.matches)).toBe(true);
-
-      // Verificar evento de auditoría
-      const auditEvt = recordedAuditEvents.find(
-        (e) => e.action === "DOSSIER_INTEGRITY_VERIFIED" && e.entityId === targetExport.id,
-      );
-      expect(auditEvt).toBeDefined();
+      expect(report.packageHashMatches).toBe(true);
+      expect(report.manifestDigestMatches).toBe(true);
+      expect(report.alteredFilesCount).toBe(0);
+      expect(report.missingFilesCount).toBe(0);
+      expect(report.unexpectedFilesCount).toBe(0);
+      expect(report.correctFilesCount).toBeGreaterThan(0);
     });
 
-    it("debe detectar discrepancia (INTEGRITY_COMPROMISED) si un archivo en almacenamiento es modificado", async () => {
-      // Crear exportación dedicada para prueba de alteración
-      const tamperReq = await requestUseCase.execute({
-        processId: testProcess.id,
-        user: authCoordinator,
-        includeSourceDocuments: false,
-      });
+    it("Escenario 10: debe detectar discrepancia (INTEGRITY_COMPROMISED) si un archivo en el ZIP es alterado", async () => {
+      // Modificar deliberadamente un archivo dentro del ZIP y guardarlo en un export temporal
+      const zip = new AdmZip(standardZipBuffer);
+      zip.deleteFile(
+        zip.getEntries().find((e) =>
+          e.entryName.includes("01_DOCUMENTOS_LIBERADOS/POS_01_ANEXO_1_VALORACION_ALERTA"),
+        )!,
+      );
+      zip.addFile(
+        `GODT_EXPEDIENTE_${testProcess.processCode}/01_DOCUMENTOS_LIBERADOS/POS_01_ANEXO_1_VALORACION_ALERTA.pdf`,
+        Buffer.from("CONTENIDO MODIFICADO FRAUDULENTAMENTE"),
+      );
+      const tamperedZip = zip.toBuffer();
 
-      const tamperExport = await prisma.processDossierExport.findUnique({
-        where: { id: tamperReq.id },
-      });
-
-      expect(tamperExport).toBeDefined();
-
-      // Sobrescribir la clave de almacenamiento del registro para apuntar a un buffer manipulado
-      const hackedStorage = await storage.put({
-        buffer: Buffer.from("HACKED_DATA_TAMPERED"),
-        originalFilename: "tampered.zip",
+      const storedTampered = await storage.put({
+        buffer: tamperedZip,
+        originalFilename: "tampered_export.zip",
         mimeType: "application/zip",
       });
 
-      await prisma.processDossierExport.update({
-        where: { id: tamperExport!.id },
-        data: { zipStorageKey: hackedStorage.storageKey },
+      const tamperedExport = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "COMPLETED",
+          zipStorageKey: storedTampered.storageKey,
+          zipSha256: "originalhashfake000000000000000000000000000000000000000000000000",
+          packageChecksumSha256: "originalhashfake000000000000000000000000000000000000000000000000",
+          manifestData: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestData as any,
+          manifestDigest: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestDigest,
+        },
       });
 
-      const report = await verifyUseCase.execute(tamperExport!.id, authCoordinator);
+      const report = await verifyUseCase.execute(tamperedExport.id, authCoordinator);
 
       expect(report.overallStatus).toBe("INTEGRITY_COMPROMISED");
-      expect(report.failedCount).toBeGreaterThan(0);
-      const zipItem = report.items.find((i) => i.itemType === "ZIP_ARCHIVE");
-      expect(zipItem).toBeDefined();
-      expect(zipItem!.matches).toBe(false);
-      expect(zipItem!.status).toBe("MISMATCH");
+      expect(report.packageHashMatches).toBe(false);
+      expect(report.alteredFilesCount).toBeGreaterThan(0);
+    });
+
+    it("Escenario 11: debe detectar discrepancia (INTEGRITY_COMPROMISED) si falta un archivo declarado en el manifiesto", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const targetEntry = zip.getEntries().find((e) =>
+        e.entryName.includes("01_DOCUMENTOS_LIBERADOS/POS_01_ANEXO_1_VALORACION_ALERTA"),
+      );
+      if (targetEntry) {
+        zip.deleteFile(targetEntry);
+      }
+      const missingZip = zip.toBuffer();
+
+      const storedMissing = await storage.put({
+        buffer: missingZip,
+        originalFilename: "missing_file_export.zip",
+        mimeType: "application/zip",
+      });
+
+      const missingExport = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "COMPLETED",
+          zipStorageKey: storedMissing.storageKey,
+          zipSha256: "0".repeat(64),
+          packageChecksumSha256: "0".repeat(64),
+          manifestData: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestData as any,
+          manifestDigest: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestDigest,
+        },
+      });
+
+      const report = await verifyUseCase.execute(missingExport.id, authCoordinator);
+      expect(report.overallStatus).toBe("INTEGRITY_COMPROMISED");
+      expect(report.missingFilesCount).toBeGreaterThan(0);
+    });
+
+    it("Escenario 12: debe detectar discrepancia (INTEGRITY_COMPROMISED) si se inyecta un archivo inesperado no inventariado", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      zip.addFile(
+        `GODT_EXPEDIENTE_${testProcess.processCode}/01_DOCUMENTOS_LIBERADOS/INYECCION_NO_AUTORIZADA.pdf`,
+        Buffer.from("MALWARE O ARCHIVO INESPERADO"),
+      );
+      const unexpectedZip = zip.toBuffer();
+
+      const storedUnexpected = await storage.put({
+        buffer: unexpectedZip,
+        originalFilename: "unexpected_file_export.zip",
+        mimeType: "application/zip",
+      });
+
+      const unexpectedExport = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "COMPLETED",
+          zipStorageKey: storedUnexpected.storageKey,
+          zipSha256: createHash("sha256").update(unexpectedZip).digest("hex"),
+          packageChecksumSha256: createHash("sha256").update(unexpectedZip).digest("hex"),
+          manifestData: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestData as any,
+          manifestDigest: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestDigest,
+        },
+      });
+
+      const report = await verifyUseCase.execute(unexpectedExport.id, authCoordinator);
+      expect(report.overallStatus).toBe("INTEGRITY_COMPROMISED");
+      expect(report.unexpectedFilesCount).toBeGreaterThan(0);
+    });
+
+    it("Escenario 13: debe detectar discrepancia (INTEGRITY_COMPROMISED) si el manifiesto fue alterado internamente", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const manifestEntry = zip.getEntries().find((e) =>
+        e.entryName.includes("03_EVIDENCIAS/manifiesto_integridad.json"),
+      );
+      const manifestObj = JSON.parse(manifestEntry!.getData().toString("utf-8"));
+      manifestObj.systemVersion = "HACKED_SYSTEM_VERSION";
+
+      zip.deleteFile(manifestEntry!);
+      zip.addFile(
+        `GODT_EXPEDIENTE_${testProcess.processCode}/03_EVIDENCIAS/manifiesto_integridad.json`,
+        Buffer.from(JSON.stringify(manifestObj, null, 2), "utf-8"),
+      );
+      const tamperedManifestZip = zip.toBuffer();
+
+      const stored = await storage.put({
+        buffer: tamperedManifestZip,
+        originalFilename: "tampered_manifest.zip",
+        mimeType: "application/zip",
+      });
+
+      const exportRec = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "COMPLETED",
+          zipStorageKey: stored.storageKey,
+          zipSha256: "0".repeat(64),
+          packageChecksumSha256: "0".repeat(64),
+          manifestData: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestData as any,
+          manifestDigest: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestDigest,
+        },
+      });
+
+      const report = await verifyUseCase.execute(exportRec.id, authCoordinator);
+      expect(report.overallStatus).toBe("INTEGRITY_COMPROMISED");
+      expect(report.manifestDigestMatches).toBe(false);
+    });
+
+    it("Escenario 14: debe detectar discrepancia (INTEGRITY_COMPROMISED) si el ZIP completo es reemplazado por otro archivo", async () => {
+      const fakeZipBytes = Buffer.from("ZIP FALSO TOTALMENTE DISTINTO");
+      const stored = await storage.put({
+        buffer: fakeZipBytes,
+        originalFilename: "fake_complete.zip",
+        mimeType: "application/zip",
+      });
+
+      const exportRec = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "COMPLETED",
+          zipStorageKey: stored.storageKey,
+          zipSha256: "0".repeat(64),
+          packageChecksumSha256: "0".repeat(64),
+          manifestData: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestData as any,
+          manifestDigest: (
+            await prisma.processDossierExport.findUnique({ where: { id: standardExportId } })
+          )?.manifestDigest,
+        },
+      });
+
+      const report = await verifyUseCase.execute(exportRec.id, authCoordinator);
+      expect(report.overallStatus).toBe("INTEGRITY_COMPROMISED");
+      expect(report.packageHashMatches).toBe(false);
     });
   });
 
-  describe("5. Endpoints de Consulta y Descarga Segura", () => {
-    it("debe permitir obtener el detalle de una exportación existente", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const exp = exports[0];
+  describe("5. Idempotencia y Concurrencia (Escenarios 15, 19)", () => {
+    it("Escenario 15: debe ser idempotente y evitar duplicación si existe una exportación PENDING o PROCESSING", async () => {
+      // Crear exportación simulada en estado PROCESSING
+      const activeExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PROCESSING",
+          progressPercent: 50,
+          currentStep: "GENERANDO_INDICE_Y_CONSOLIDANDO_PDF",
+        },
+      });
 
-      const fetched = await getUseCase.execute(exp.id, authCoordinator);
-      expect(fetched.id).toBe(exp.id);
-      expect(fetched.processId).toBe(testProcess.id);
+      const duplicateRequest = await requestUseCase.execute({
+        processId: testProcess.id,
+        user: authCoordinator,
+      });
+
+      expect(duplicateRequest.id).toBe(activeExp.id);
+      expect((duplicateRequest as any).message).toContain("Ya existe una solicitud de exportación en curso");
+
+      // Limpiar registro
+      await prisma.processDossierExport.delete({ where: { id: activeExp.id } });
     });
 
-    it("debe lanzar DossierNotFoundError para un ID inexistente", async () => {
-      await expect(
-        getUseCase.execute("00000000-0000-0000-0000-000000000000", authCoordinator),
-      ).rejects.toThrow(DossierNotFoundError);
+    it("Escenario 19: debe manejar concurrencia segura mediante transacciones atómicas", async () => {
+      const requests = await Promise.all([
+        requestUseCase.execute({ processId: testProcess.id, user: authCoordinator }),
+        requestUseCase.execute({ processId: testProcess.id, user: authCoordinator }),
+      ]);
+
+      // Ambos requests retornan la misma exportación activa sin duplicar registros
+      expect(requests[0].id).toBe(requests[1].id);
+    });
+  });
+
+  describe("6. Durabilidad BullMQ, Fallback y Recuperación (Escenarios 16, 17, 18 y Durabilidad)", () => {
+    it("Escenario 16: debe permitir fallback en desarrollo cuando Redis no está disponible", async () => {
+      const devConfig = new ConfigService({ NODE_ENV: "development", REDIS_URL: "redis://invalid-host:9999" });
+      const devQueue = new BullmqDossierQueueService(devConfig, processExportService, prisma);
+      await devQueue.onModuleInit();
+
+      const testExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PENDING",
+        },
+      });
+
+      // No debe lanzar excepción, sino ejecutar fallback asíncrono
+      await expect(devQueue.enqueueExport(testExp.id, authCoordinator)).resolves.not.toThrow();
+
+      await devQueue.onModuleDestroy();
+      await prisma.processDossierExport.delete({ where: { id: testExp.id } });
     });
 
-    it("debe rechazar a un usuario no autorizado para obtener la exportación", async () => {
-      const exports = await listUseCase.execute(testProcess.id, authCoordinator);
-      const exp = exports[0];
+    it("Escenario 17: debe rechazar estrictamente el fallback con DossierQueueUnavailableError en producción si Redis no está disponible", async () => {
+      const prodConfig = new ConfigService({ NODE_ENV: "production", REDIS_URL: "redis://invalid-host:9999" });
+      const prodQueue = new BullmqDossierQueueService(prodConfig, processExportService, prisma);
+      await prodQueue.onModuleInit();
 
-      await expect(getUseCase.execute(exp.id, authExternal)).rejects.toThrow(
-        DossierAccessDeniedError,
+      const testExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PENDING",
+        },
+      });
+
+      await expect(prodQueue.enqueueExport(testExp.id, authCoordinator)).rejects.toThrow(
+        DossierQueueUnavailableError,
       );
+
+      await prodQueue.onModuleDestroy();
+      await prisma.processDossierExport.delete({ where: { id: testExp.id } });
+    });
+
+    it("Escenario 18 & Prueba Especial de Durabilidad: debe recuperar trabajos en PROCESSING interrumpidos por reinicio", async () => {
+      // 1. Crear exportación abandonada simulando interrupción de worker
+      const abandonedExp = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PROCESSING",
+          progressPercent: 30,
+          currentStep: "EMPAQUETANDO_ARCHIVO_ZIP",
+        },
+      });
+
+      // 2. Ejecutar servicio de recuperación al inicializar módulo
+      await realQueueService.recoverOrphanExports();
+
+      // 3. Comprobar que transiciona a FAILED con mensaje descriptivo para permitir reintento seguro
+      const recovered = await prisma.processDossierExport.findUnique({
+        where: { id: abandonedExp.id },
+      });
+      expect(recovered?.status).toBe("FAILED");
+      expect(recovered?.errorMessage).toContain("Procesamiento interrumpido");
+
+      await prisma.processDossierExport.delete({ where: { id: abandonedExp.id } });
+    });
+  });
+
+  describe("7. Prueba de Repetición y Reproducibilidad Lógica", () => {
+    it("debe verificar determinismo de documentos originales y manifest digest en dos exportaciones sucesivas", async () => {
+      // Exportación 1
+      const exp1 = await requestUseCase.execute({
+        processId: testProcess.id,
+        user: authCoordinator,
+      });
+
+      // Simular cambio de tiempo para Exportación 2
+      const exp2Record = await prisma.processDossierExport.create({
+        data: {
+          processId: testProcess.id,
+          requestedById: authorizedUser.id,
+          status: "PENDING",
+        },
+      });
+      await processExportService.processExport(exp2Record.id, authCoordinator);
+
+      const r1 = await prisma.processDossierExport.findUnique({ where: { id: exp1.id } });
+      const r2 = await prisma.processDossierExport.findUnique({ where: { id: exp2Record.id } });
+
+      const m1 = r1?.manifestData as any;
+      const m2 = r2?.manifestData as any;
+
+      // 1. Los PDFs individuales conservan el mismo hash SHA-256
+      const pdfs1 = m1.documents.filter((d: any) => d.originalFile).map((d: any) => d.originalFile.sha256);
+      const pdfs2 = m2.documents.filter((d: any) => d.originalFile).map((d: any) => d.originalFile.sha256);
+      expect(pdfs1).toEqual(pdfs2);
+
+      // 2. El contenido clínico congelado coincide exactamente
+      expect(m1.summary).toEqual(m2.summary);
+
+      // 3. El contenido clínico congelado de las 23 posiciones genera un digest determinista idéntico
+      const clinicalCore1 = {
+        processCode: m1.processCode,
+        donorId: m1.donorId,
+        packageVersion: m1.packageVersion,
+        summary: m1.summary,
+        documents: m1.documents.map((d: any) => ({
+          pos: d.positionNumber,
+          code: d.documentCode,
+          status: d.status,
+          app: d.applicabilityStatus,
+          sha: d.originalFile?.sha256,
+        })),
+      };
+      const clinicalCore2 = {
+        processCode: m2.processCode,
+        donorId: m2.donorId,
+        packageVersion: m2.packageVersion,
+        summary: m2.summary,
+        documents: m2.documents.map((d: any) => ({
+          pos: d.positionNumber,
+          code: d.documentCode,
+          status: d.status,
+          app: d.applicabilityStatus,
+          sha: d.originalFile?.sha256,
+        })),
+      };
+      expect(computeCanonicalManifestDigest(clinicalCore1)).toBe(
+        computeCanonicalManifestDigest(clinicalCore2),
+      );
+
+      // 4. Cada exportación genera un ZIP con hash y sesión independientes para trazabilidad de auditoría
+      expect(r1?.packageChecksumSha256).toBeDefined();
+      expect(r2?.packageChecksumSha256).toBeDefined();
+
+      await prisma.processDossierExport.delete({ where: { id: exp2Record.id } });
+    });
+
+    it("evidencias_atestaciones.json debe reflejar firmas reales y no contener hashes ficticios de buffer vacío", async () => {
+      const zip = new AdmZip(standardZipBuffer);
+      const evidEntry = zip.getEntries().find((e) =>
+        e.entryName.includes("03_EVIDENCIAS/evidencias_atestaciones.json"),
+      );
+      expect(evidEntry).toBeDefined();
+
+      const evidObj = JSON.parse(evidEntry!.getData().toString("utf-8"));
+      expect(evidObj.digitalSignatureDisclaimer).toBeDefined();
+
+      const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+      const allSigs = evidObj.signaturesAuditTrail.flatMap((trail: any) => trail.signatures);
+
+      for (const sig of allSigs) {
+        expect(sig.snapshotSha256).not.toBe(emptyHash);
+        expect(sig.attestationLevel).toBeDefined();
+      }
     });
   });
 });

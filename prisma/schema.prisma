@@ -854,6 +854,8 @@ model ProcessDossierExport {
   consolidatedPdfSha256      String?          @map("consolidated_pdf_sha256") @db.Char(64)
   zipStorageKey              String?          @map("zip_storage_key") @db.VarChar(500)
   zipSha256                  String?          @map("zip_sha256") @db.Char(64)
+  packageChecksumSha256      String?          @map("package_checksum_sha256") @db.Char(64)
+  manifestDigest             String?          @map("manifest_digest") @db.Char(64)
   zipSizeBytes               BigInt?          @map("zip_size_bytes")
   manifestData               Json?            @map("manifest_data")
   errorMessage               String?          @map("error_message") @db.Text
