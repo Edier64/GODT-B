@@ -20,3 +20,19 @@ export class PropagateOcrFieldDto {
   @IsString()
   fieldId!: string;
 }
+
+export class BatchPropagateItemDto {
+  @IsString()
+  fieldId!: string;
+
+  @IsEnum(OcrDecision)
+  status!: OcrDecision;
+
+  @IsOptional()
+  @IsString()
+  confirmedValue?: string;
+}
+
+export class BatchPropagateOcrFieldsDto {
+  items!: BatchPropagateItemDto[];
+}

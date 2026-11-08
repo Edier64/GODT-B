@@ -3,6 +3,7 @@ import { SourceDocument } from "@prisma/client";
 export interface DocumentRepository {
   create(input: {
     donorId: string;
+    processId?: string;
     uploadedById: string;
     originalFilename: string;
     mimeType: string;

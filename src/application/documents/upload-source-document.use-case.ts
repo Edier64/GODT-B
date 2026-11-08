@@ -116,6 +116,7 @@ export class UploadSourceDocumentUseCase {
     try {
       return await this.documents.create({
         donorId: effectiveDonorId!,
+        processId: input.processId,
         uploadedById: input.uploadedById,
         originalFilename: sanitizedFilename,
         mimeType: detectedMime,

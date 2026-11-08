@@ -9,9 +9,19 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
+import type { Express } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { AuthenticatedUser } from "../auth/auth.types";
@@ -22,6 +32,7 @@ import { UpdateDonationProcessUseCase } from "../../application/processes/update
 import { AddProcessInstitutionUseCase } from "../../application/processes/add-institution.use-case";
 import { AddProcessParticipantUseCase } from "../../application/processes/add-participant.use-case";
 import { GetDashboardSummaryUseCase } from "../../application/processes/get-dashboard-summary.use-case";
+import { IntakeDonorFromClinicalHistoryUseCase } from "../../application/processes/intake-donor-from-clinical-history.use-case";
 import {
   CreateDonationProcessDto,
   CreateProcessInstitutionDto,
@@ -49,7 +60,58 @@ export class DonationProcessController {
     private readonly addInstitution: AddProcessInstitutionUseCase,
     private readonly addParticipant: AddProcessParticipantUseCase,
     private readonly getDashboardSummary: GetDashboardSummaryUseCase,
+    private readonly intakeFromClinicalHistoryUseCase: IntakeDonorFromClinicalHistoryUseCase,
   ) {}
+
+  @Post("intake-from-clinical-history")
+  @ApiOperation({
+    summary:
+      "Crear proceso operativo desde historia clínica cargada por el usuario (OCR/IA)",
+  })
+  @ApiConsumes("multipart/form-data")
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file", "primaryIpsName"],
+      properties: {
+        file: { type: "string", format: "binary" },
+        primaryIpsName: { type: "string" },
+        notes: { type: "string" },
+        processCode: { type: "string" },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }),
+  )
+  async intakeFromClinicalHistory(
+    @UploadedFile() file: Express.Multer.File,
+    @Body("primaryIpsName") primaryIpsName: string,
+    @Body("notes") notes: string,
+    @Body("processCode") processCode: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file) {
+      throw new HttpException(
+        "Se requiere un archivo de historia clínica (PDF o DOCX)",
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return this.run(() =>
+      this.intakeFromClinicalHistoryUseCase.execute({
+        primaryIpsName,
+        notes,
+        processCode,
+        file: {
+          buffer: file.buffer,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+        },
+        actor: user,
+      }),
+    );
+  }
 
   @Post()
   @ApiOperation({ summary: "Apertura de proceso de donación" })

@@ -70,6 +70,9 @@ import { DocumentUnderstandingService } from "../../application/ocr/document-und
   ],
   exports: [
     OCR_PROVIDER,
+    OCR_REPOSITORY,
+    StartOcrUseCase,
+    OcrWorkflowUseCase,
     GeminiOcrAdapter,
     DocumentUnderstandingService,
     LocalRulesExtractionProvider,
