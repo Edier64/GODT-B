@@ -172,3 +172,4 @@ La **Fase G.1.3.2** queda formalmente **CERRADA Y APROBADA**. GODT Regional 3 cu
 - Anexo 5 nativo DOCX robusto ante textos de cualquier longitud y con escape XML estricto.
 - Renderizado visual probado sobre los 18 formatos PDF institucionales.
 - Compilación limpia tanto en NestJS como en Vue 3.
+

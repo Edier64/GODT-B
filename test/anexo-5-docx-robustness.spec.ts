@@ -155,3 +155,4 @@ describe("Anexo 5: Robustez y Validación OpenXML (Fase G.1.3.2)", () => {
     expect(meta.status).toBe("INSTITUTIONAL_REGISTERED_TEMPLATE");
   });
 });
+

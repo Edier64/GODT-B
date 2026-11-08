@@ -59,7 +59,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 915,
       fontSize: 9,
       isBold: true,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName || "IPS Regional 3",
     },
     {
       pageIndex: 0,
@@ -75,14 +75,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 125,
       y: 845,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorName || d.fallecidoNombre || d.nombreDonante || d.nombresApellidos || "N/A",
+      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || d.nombresApellidos || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 430,
       y: 845,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorDocument || d.fallecidoDocumento || d.numeroIdentificacion || "N/A",
+      getValue: (d, meta) => d.numeroIdentificacion || d.donanteDocumento || d.fallecidoDocumento || meta.donorDocument || "N/A",
     },
     {
       pageIndex: 0,
@@ -127,7 +127,15 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 135,
       y: 735,
       fontSize: 8.5,
-      getValue: (d) => d.glasgowIngreso ? `Glasgow: ${d.glasgowIngreso}/15` : "Glasgow: 3/15 (Midriasis bilateral)",
+      getValue: (d) => (d.glasgowScore !== undefined && d.glasgowScore !== null ? `Glasgow: ${d.glasgowScore}/15` : (d.glasgowIngreso ? `Glasgow: ${d.glasgowIngreso}/15` : "Glasgow: 3/15 (Midriasis bilateral)")),
+    },
+    // Servicio Hospitalario
+    {
+      pageIndex: 0,
+      x: 140,
+      y: 703,
+      fontSize: 8.5,
+      getValue: (d) => d.servicioHospitalario || d.servicioUbicacion || "UCI Adultos",
     },
     // Monitoreo hemodinámico
     {
@@ -151,7 +159,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       fontSize: 8.5,
       getValue: (d) => `${d.temperaturaCorporal || "36.5"} °C`,
     },
-    // Página 2: Criterios clínicos y firmas
+    // Página 2: Criterios clínicos, observaciones y firmas
     {
       pageIndex: 1,
       x: 135,
@@ -165,6 +173,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 850,
       fontSize: 8.5,
       getValue: (d) => d.testApnea || "Test de apnea positivo (pCO2 > 60 mmHg sin esfuerzo respiratorio)",
+    },
+    {
+      pageIndex: 1,
+      x: 130,
+      y: 245,
+      fontSize: 8.5,
+      maxWidth: 440,
+      getValue: (d) => d.observacionesAlerta || d.observaciones || "",
     },
     {
       pageIndex: 1,
@@ -187,14 +203,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 710,
       fontSize: 9,
       isBold: true,
-      getValue: (d, meta) => meta.donorName || d.fallecidoNombre || "N/A",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 430,
       y: 710,
       fontSize: 9,
-      getValue: (d, meta) => `${d.fallecidoTipoDocumento || "CC"}: ${meta.donorDocument || d.fallecidoDocumento || "N/A"}`,
+      getValue: (d, meta) => `${d.fallecidoTipoDocumento || d.tipoIdentificacion || "CC"}: ${d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A"}`,
     },
     {
       pageIndex: 0,
@@ -254,14 +270,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 710,
       fontSize: 9,
       isBold: true,
-      getValue: (d, meta) => meta.donorName || d.fallecidoNombre || "N/A",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 430,
       y: 710,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorDocument || d.fallecidoDocumento || "N/A",
+      getValue: (d, meta) => d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A",
     },
     {
       pageIndex: 0,
@@ -307,7 +323,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 710,
       fontSize: 9,
       isBold: true,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || d.nombreIps || meta.primaryIpsName || "IPS Red Regional 3",
     },
     {
       pageIndex: 0,
@@ -322,14 +338,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 130,
       y: 665,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || "N/A",
+      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 420,
       y: 665,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorDocument || d.numeroDocumento || "N/A",
+      getValue: (d, meta) => d.numeroDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A",
     },
     {
       pageIndex: 0,
@@ -380,14 +396,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 540,
       fontSize: 9,
       isBold: true,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || "N/A",
+      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 750,
       y: 540,
       fontSize: 9,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || d.nombreIps || meta.primaryIpsName || "IPS Regional 3",
     },
   ],
 
@@ -402,21 +418,21 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 710,
       fontSize: 9,
       isBold: true,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.nombreIps || d.institucionRemitente || meta.primaryIpsName || "IPS Regional 3",
     },
     {
       pageIndex: 0,
       x: 140,
       y: 640,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorName || d.fallecidoNombre || "N/A",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.nombresApellidos || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 430,
       y: 640,
       fontSize: 9,
-      getValue: (d, meta) => meta.donorDocument || d.fallecidoDocumento || "N/A",
+      getValue: (d, meta) => d.fallecidoDocumento || d.numeroIdentificacion || meta.donorDocument || "N/A",
     },
     {
       pageIndex: 0,
@@ -487,7 +503,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       fontSize: 8,
       isBold: true,
       maxWidth: 240,
-      getValue: (d, meta) => meta.primaryIpsName || d.ipsGeneradora || "IPS Red Regional 3",
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName || "IPS Red Regional 3",
     },
     {
       pageIndex: 0,
@@ -496,14 +512,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       fontSize: 8,
       isBold: true,
       maxWidth: 150,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || d.nombresApellidos || "Donante Fallecido",
+      getValue: (d, meta) => d.donanteNombre || d.nombreDonante || d.nombresApellidos || meta.donorName || "Donante Fallecido",
     },
     {
       pageIndex: 0,
       x: 295,
       y: 777,
       fontSize: 8,
-      getValue: (d, meta) => `${d.tipoIdentificacion || "CC"} ${meta.donorDocument || d.numeroIdentificacion || "N/A"}`,
+      getValue: (d, meta) => `${d.donanteTipoDocumento || d.tipoIdentificacion || "CC"} ${d.donanteDocumento || d.numeroIdentificacion || meta.donorDocument || "N/A"}`,
     },
     {
       pageIndex: 0,
@@ -1495,7 +1511,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 200,
       y: 390,
       fontSize: 8,
-      getValue: (_, meta) => `${meta.primaryIpsName} · Coordinación Operativa`,
+      getValue: (d, meta) => `${d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName} · Coordinación Operativa`,
     },
     {
       pageIndex: 3,
@@ -1516,14 +1532,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 235,
       y: 680,
       fontSize: 8.5,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || d.fallecidoNombre || "N/A",
+      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 140,
       y: 655,
       fontSize: 8.5,
-      getValue: (d, meta) => meta.donorDocument || d.numeroIdentificacion || "N/A",
+      getValue: (d, meta) => d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A",
     },
     {
       pageIndex: 0,
@@ -1538,7 +1554,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 180,
       y: 550,
       fontSize: 8.5,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.nombreIps || meta.primaryIpsName,
     },
     // Pág 2: Procedimiento y Calidad
     {
@@ -1553,7 +1569,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 200,
       y: 734,
       fontSize: 8.5,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.ipsGeneradora || d.nombreIps || meta.primaryIpsName,
     },
     {
       pageIndex: 1,
@@ -1587,14 +1603,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 220,
       y: 680,
       fontSize: 8.5,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || "N/A",
+      getValue: (d, meta) => d.donanteNombre || d.nombreDonante || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 180,
       y: 640,
       fontSize: 8.5,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || meta.primaryIpsName,
     },
     {
       pageIndex: 1,
@@ -1628,14 +1644,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 220,
       y: 680,
       fontSize: 8.5,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || "N/A",
+      getValue: (d, meta) => d.donanteNombre || d.nombreDonante || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 180,
       y: 640,
       fontSize: 8.5,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || meta.primaryIpsName,
     },
     {
       pageIndex: 1,
@@ -1669,14 +1685,14 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       x: 220,
       y: 680,
       fontSize: 8.5,
-      getValue: (d, meta) => meta.donorName || d.nombreDonante || "N/A",
+      getValue: (d, meta) => d.donanteNombre || d.nombreDonante || meta.donorName || "N/A",
     },
     {
       pageIndex: 0,
       x: 180,
       y: 640,
       fontSize: 8.5,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || meta.primaryIpsName,
     },
     {
       pageIndex: 1,
@@ -1723,7 +1739,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -1792,7 +1808,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -1861,7 +1877,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -1930,7 +1946,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -1999,7 +2015,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -2068,7 +2084,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,
@@ -2137,7 +2153,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       y: 678,
       fontSize: 8.5,
       maxWidth: 340,
-      getValue: (_, meta) => meta.primaryIpsName,
+      getValue: (d, meta) => d.nombreIps || d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName,
     },
     {
       pageIndex: 0,

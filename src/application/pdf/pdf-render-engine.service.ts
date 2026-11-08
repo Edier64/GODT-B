@@ -96,8 +96,16 @@ export class PdfRenderEngineService {
         const lastPage = pages[pages.length - 1];
         const statusLabel = input.metadata.revisionNumber ? `Rev #${input.metadata.revisionNumber}` : "Borrador";
         const digestShort = input.metadata.snapshotDigest ? input.metadata.snapshotDigest.slice(0, 16) : "OFICIAL";
+        const effectiveIps =
+          (input.data.ipsGeneradora as string) ||
+          (input.data.institucionRemitente as string) ||
+          (input.data.nombreIps as string) ||
+          (input.data.ips as string) ||
+          input.metadata.primaryIpsName ||
+          "IPS Regional 3";
+
         lastPage.drawText(
-          `GODT Regional 3 · Proceso: ${input.metadata.processCode} · ${statusLabel} · Digest SHA-256: ${digestShort} · IPS: ${input.metadata.primaryIpsName}`,
+          `GODT Regional 3 · Proceso: ${input.metadata.processCode} · ${statusLabel} · Digest SHA-256: ${digestShort} · IPS: ${effectiveIps}`,
           {
             x: 35,
             y: 20,
