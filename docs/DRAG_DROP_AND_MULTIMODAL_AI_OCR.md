@@ -236,3 +236,4 @@ Ambos repositorios se mantienen sincronizados en la rama de funcionalidad `featu
     - `src/views/DonationProcessListView.vue`
 
 La rama principal `main` en ambos repositorios se mantiene íntegra y protegida sin fusiones no autorizadas.
+
