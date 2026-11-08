@@ -95,9 +95,14 @@ export class CanonicalPropagationEngine {
     // 2. Validar tipo y políticas
     this.validateValueType(fieldDef, input.value);
 
-    if (fieldDef.sharingPolicy === "READONLY_DERIVED" && input.sourceKind === "MANUAL") {
+    if (
+      fieldDef.sharingPolicy === "READONLY_DERIVED" &&
+      (input.sourceKind === "MANUAL" ||
+        input.sourceKind === "OCR_CONFIRMED" ||
+        input.sourceKind === "OCR_MODIFIED")
+    ) {
       throw new CanonicalValidationError(
-        `El marcador '${fieldDef.displayName}' es de solo lectura y no puede modificarse manualmente`,
+        `El marcador '${fieldDef.displayName}' es de solo lectura derivada institucional y no puede modificarse mediante ingesta OCR ni edición manual`,
       );
     }
 

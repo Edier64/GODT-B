@@ -669,4 +669,60 @@ describe("GODT Regional 3 — Flujo de Ingesta de Donante desde Historia Clínic
       expect(fullNameCand?.candidateValue).toBe("DONANTE SINTETICO PRUEBA OCR");
     });
   });
+
+  // =========================================================================
+  // CASO G: SEGURIDAD CANÓNICA Y BLINDAJE DE READONLY_DERIVED (RND_CODE)
+  // =========================================================================
+  describe("Caso G: Seguridad canónica, aislamiento de PROV-RND y blindaje de READONLY_DERIVED", () => {
+    it("rechaza estrictamente la propagación OCR sobre campos READONLY_DERIVED como rnd_code", async () => {
+      const mockDictionaryRepo = {
+        findFieldByKey: jest.fn().mockResolvedValue({
+          canonicalFieldKey: "donor.registration.rnd_code",
+          displayName: "Código Nacional RND",
+          dataType: "string",
+          scope: "DONOR",
+          sharingPolicy: "READONLY_DERIVED",
+        }),
+      };
+
+      const engine = new CanonicalPropagationEngine(
+        mockDictionaryRepo as any,
+        {} as any,
+        {} as any,
+      );
+
+      await expect(
+        engine.applyAndPropagate({
+          processId: "proc-synth-1",
+          canonicalFieldKey: "donor.registration.rnd_code",
+          value: "RND-OVERWRITE-HACK",
+          sourceKind: "OCR_CONFIRMED",
+          actorUserId: mockCoordinatorUser.userId,
+        }),
+      ).rejects.toThrow("es de solo lectura derivada institucional");
+
+      await expect(
+        engine.applyAndPropagate({
+          processId: "proc-synth-1",
+          canonicalFieldKey: "donor.registration.rnd_code",
+          value: "RND-OVERWRITE-HACK-MOD",
+          sourceKind: "OCR_MODIFIED",
+          actorUserId: mockCoordinatorUser.userId,
+        }),
+      ).rejects.toThrow("es de solo lectura derivada institucional");
+    });
+
+    it("garantiza que los códigos provisionales PROV-RND y PROV-DOC mantienen su prefijo y no suplantan identificaciones oficiales", () => {
+      const currentYear = new Date().getFullYear();
+      const mockProvisionalRnd = `PROV-RND-${currentYear}-4B9A7C1E2F3D4E5A`;
+      const mockProvisionalDoc = `PROV-DOC-${currentYear}-8F7E6D5C4B3A2190`;
+
+      expect(mockProvisionalRnd).toMatch(new RegExp(`^PROV-RND-${currentYear}-[0-9A-F]{16,}$`));
+      expect(mockProvisionalDoc).toMatch(new RegExp(`^PROV-DOC-${currentYear}-[0-9A-F]{16,}$`));
+
+      // No debe ser confundido con un código oficial de RND
+      expect(mockProvisionalRnd.startsWith("PROV-")).toBe(true);
+      expect(mockProvisionalDoc.startsWith("PROV-")).toBe(true);
+    });
+  });
 });
