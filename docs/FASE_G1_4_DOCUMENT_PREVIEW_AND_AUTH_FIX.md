@@ -189,3 +189,4 @@ La Fase G.1.4 ha resuelto de manera definitiva y trazable los tres bloqueos dete
 1. El visor modal ahora opera con descarga reactiva de Blobs autenticados mediante JWT, eliminando completamente el error 401 sin exponer credenciales.
 2. El catálogo documental ofrece acceso visual y descarga fiel a los 19 formatos oficiales y 11 variantes de Anexo 7, manteniendo la correcta categorización de documentos complementarios y posiciones reservadas.
 3. El motor de previsualización por proceso refleja fielmente los datos diligenciados por el usuario, soporta revisiones históricas y garantiza que no existan inconsistencias por caché ni sobreescritura de metadatos.
+
