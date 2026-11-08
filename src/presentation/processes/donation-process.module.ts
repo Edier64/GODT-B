@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
 import { InstitutionModule } from "../institutions/institution.module";
@@ -30,7 +30,7 @@ import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-p
     PrismaModule,
     InstitutionModule,
     DocumentsModule,
-    OcrModule,
+    forwardRef(() => OcrModule),
   ],
   controllers: [DonationProcessController],
   providers: [
