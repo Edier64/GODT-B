@@ -558,8 +558,9 @@ export class CanonicalPropagationEngine {
 
   private extractMappings(mappingConfig: unknown): CanonicalFieldMapping[] {
     if (!Array.isArray(mappingConfig)) return [];
-    return mappingConfig.map((item) => {
-      if (typeof item === "object" && item !== null) {
+    return mappingConfig
+      .filter((item): item is Record<string, any> => typeof item === "object" && item !== null)
+      .map((item) => {
         const anyItem = item as any;
         return {
           schemaPath: anyItem.schemaPath || anyItem.targetKey || "",
@@ -576,9 +577,7 @@ export class CanonicalPropagationEngine {
           deterministicRule: anyItem.deterministicRule,
           requiresHumanSelection: anyItem.requiresHumanSelection,
         };
-      }
-      return item as CanonicalFieldMapping;
-    });
+      });
   }
 
   private async updateInstanceField(

@@ -270,8 +270,26 @@ export class InstitutionService {
         );
 
       if (!isAuthorized) {
+        const userScope = await this.prisma.userInstitutionScope?.findUnique?.({
+          where: {
+            userId_institutionId: {
+              userId: user.userId,
+              institutionId: match.id,
+            },
+          },
+        });
+        if (userScope?.status === "PENDING") {
+          throw new ForbiddenException(
+            `Tienes una solicitud de vinculación en estado PENDIENTE para '${match.name}'. Debes esperar la aprobación del Administrador antes de abrir procesos en ella.`,
+          );
+        }
+        if (userScope?.status === "REJECTED") {
+          throw new ForbiddenException(
+            `Tu solicitud de vinculación para '${match.name}' fue RECHAZADA. No tienes autorización para abrir procesos en esta institución.`,
+          );
+        }
         throw new ForbiddenException(
-          `Esta institución ya existe ('${match.name}'), pero actualmente no tienes autorización para abrir procesos en ella. Puedes solicitar la asociación institucional desde la interfaz.`,
+          `Esta institución ya existe ('${match.name}'), pero actualmente no tienes autorización aprobada para abrir procesos en ella. Puedes solicitar la vinculación institucional desde la interfaz.`,
         );
       }
 
@@ -281,8 +299,26 @@ export class InstitutionService {
       };
     }
 
-    // Si no coincide exactamente con ninguna en la base de datos maestra
-    // Si el usuario es ADMIN, permitir el nombre ingresado directamente
+    // 2. Si no coincide exactamente con ninguna en la base de datos maestra
+    // Buscar si hay alguna similar para advertir y evitar suplantación/errores tipográficos
+    const candidates = all.filter((i) => {
+      const dist = levenshteinDistance(qNorm, i.normalizedName);
+      const sim = stringSimilarity(qNorm, i.normalizedName);
+      const aliasMatch = i.aliases.some(
+        (a) =>
+          levenshteinDistance(qNorm, a.normalizedAlias) <= 2 ||
+          stringSimilarity(qNorm, a.normalizedAlias) >= 0.7,
+      );
+      return dist <= 2 || sim >= 0.7 || aliasMatch;
+    });
+
+    if (candidates.length > 0) {
+      throw new ForbiddenException(
+        `No encontramos una IPS autorizada con el nombre exacto '${rawIpsName}'. Encontramos una institución que podría corresponder: '${candidates[0].name}'. Debes seleccionarla explícitamente desde el buscador y contar con vinculación aprobada. Las coincidencias aproximadas no conceden autorización automática.`,
+      );
+    }
+
+    // Si el usuario es ADMIN, permitir el nombre ingresado directamente (alcance global transversal)
     if (user.role === "ADMIN") {
       return {
         canonicalName: rawIpsName.trim(),
@@ -290,26 +326,12 @@ export class InstitutionService {
       };
     }
 
-    // Si el usuario tiene la IPS textual en su token o scope legado
+    // Si el usuario tiene la IPS textual exacta en su token o scope legado
     if (user.institutionalIps?.includes(rawIpsName.trim())) {
       return {
         canonicalName: rawIpsName.trim(),
         institutionId: "",
       };
-    }
-
-    // Buscar si hay alguna similar para advertir
-    const candidates = all.filter((i) => {
-      return (
-        stringSimilarity(qNorm, i.normalizedName) >= 0.7 ||
-        i.aliases.some((a) => stringSimilarity(qNorm, a.normalizedAlias) >= 0.7)
-      );
-    });
-
-    if (candidates.length > 0) {
-      throw new ForbiddenException(
-        `No encontramos una IPS autorizada con el nombre exacto '${rawIpsName}'. Encontramos una institución que podría corresponder: '${candidates[0].name}'. Selecciónala del buscador o solicita autorización.`,
-      );
     }
 
     throw new ForbiddenException(
@@ -501,3 +523,4 @@ export class InstitutionService {
     );
   }
 }
+

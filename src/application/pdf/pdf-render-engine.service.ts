@@ -100,10 +100,20 @@ export class PdfRenderEngineService {
           `GODT Regional 3 · Proceso: ${input.metadata.processCode} · ${statusLabel} · Digest SHA-256: ${digestShort} · IPS: ${input.metadata.primaryIpsName}`,
           {
             x: 35,
-            y: 15,
-            size: 7,
+            y: 20,
+            size: 6.5,
             font: fontRegular,
             color: rgb(0.35, 0.42, 0.5),
+          },
+        );
+        lastPage.drawText(
+          "Atestación operativa/electrónica registrada en plataforma GODT. No constituye firma digital certificada PKI bajo Ley 527 de 1999.",
+          {
+            x: 35,
+            y: 11,
+            size: 6,
+            font: fontRegular,
+            color: rgb(0.55, 0.25, 0.25),
           },
         );
 
@@ -112,14 +122,26 @@ export class PdfRenderEngineService {
           let sigY = 60;
           for (const sig of input.metadata.signatures) {
             if (sig.status === "FIRMADO" || sig.signedAt) {
+              const sigTypeStr =
+                sig.signatureType === "DIGITAL_CERTIFICADA"
+                  ? "[BLOQUEADA: Firma Digital Certificada PKI no disponible (Ley 527/1999)]"
+                  : sig.signatureType === "FIRMA_DIGITALIZADA"
+                  ? "FIRMA MANUSCRITA DIGITALIZADA"
+                  : sig.signatureType === "REPRESENTACION_VISUAL"
+                  ? "REPRESENTACIÓN VISUAL OPERATIVA"
+                  : "ATESTACIÓN ELECTRÓNICA OPERATIVA";
+              const sigColor =
+                sig.signatureType === "DIGITAL_CERTIFICADA"
+                  ? rgb(0.8, 0.2, 0.2)
+                  : rgb(0.08, 0.45, 0.35);
               lastPage.drawText(
-                `[ATESTACIÓN FIRMADA] ${sig.fullName} (${sig.signerRole}) — ${new Date(sig.signedAt || input.metadata.generatedAt).toLocaleString("es-CO")}`,
+                `[${sigTypeStr}] ${sig.fullName} (${sig.signerRole}) — ${new Date(sig.signedAt || input.metadata.generatedAt).toLocaleString("es-CO")}`,
                 {
                   x: 35,
                   y: sigY,
                   size: 7.5,
                   font: fontBold,
-                  color: rgb(0.08, 0.45, 0.35),
+                  color: sigColor,
                 },
               );
               sigY += 12;
@@ -1427,15 +1449,22 @@ export class PdfRenderEngineService {
 
     const sig1 = signatures?.[0];
     if (sig1 && sig1.status === "FIRMADO") {
-      const sigLabel = sig1.signatureType === "DIGITAL_CERTIFICADA"
-        ? "✓ FIRMA DIGITAL CERTIFICADA"
-        : `✓ ATESTACIÓN REGISTRADA (${sig1.signatureType})`;
+      let sigLabel = `✓ ATESTACIÓN ELECTRÓNICA (${sig1.signatureType})`;
+      let sigColor = rgb(0.08, 0.45, 0.35);
+      if (sig1.signatureType === "DIGITAL_CERTIFICADA") {
+        sigLabel = "⚠ BLOQUEADA: Certificación PKI no disponible (Ley 527)";
+        sigColor = rgb(0.8, 0.2, 0.2);
+      } else if (sig1.signatureType === "FIRMA_DIGITALIZADA") {
+        sigLabel = "✓ FIRMA MANUSCRITA DIGITALIZADA";
+      } else if (sig1.signatureType === "REPRESENTACION_VISUAL") {
+        sigLabel = "✓ REPRESENTACIÓN VISUAL OPERATIVA";
+      }
       page.drawText(sigLabel, {
         x: 46,
         y: y + 36,
-        size: 8,
+        size: 7.5,
         font: bold,
-        color: rgb(0.08, 0.45, 0.35),
+        color: sigColor,
       });
       page.drawText(`Firmante: ${sig1.fullName}`, { x: 46, y: y + 24, size: 7.5, font: regular });
       page.drawText(`Fecha/Hora: ${sig1.signedAt ? new Date(sig1.signedAt).toISOString() : new Date().toISOString()}`, {
@@ -1474,15 +1503,22 @@ export class PdfRenderEngineService {
 
     const sig2 = signatures?.[1];
     if (sig2 && sig2.status === "FIRMADO") {
-      const sigLabel2 = sig2.signatureType === "DIGITAL_CERTIFICADA"
-        ? "✓ FIRMA DIGITAL CERTIFICADA"
-        : `✓ ATESTACIÓN REGISTRADA (${sig2.signatureType})`;
+      let sigLabel2 = `✓ ATESTACIÓN ELECTRÓNICA (${sig2.signatureType})`;
+      let sigColor2 = rgb(0.08, 0.45, 0.35);
+      if (sig2.signatureType === "DIGITAL_CERTIFICADA") {
+        sigLabel2 = "⚠ BLOQUEADA: Certificación PKI no disponible (Ley 527)";
+        sigColor2 = rgb(0.8, 0.2, 0.2);
+      } else if (sig2.signatureType === "FIRMA_DIGITALIZADA") {
+        sigLabel2 = "✓ FIRMA MANUSCRITA DIGITALIZADA";
+      } else if (sig2.signatureType === "REPRESENTACION_VISUAL") {
+        sigLabel2 = "✓ REPRESENTACIÓN VISUAL OPERATIVA";
+      }
       page.drawText(sigLabel2, {
         x: box2X + 6,
         y: y + 36,
-        size: 8,
+        size: 7.5,
         font: bold,
-        color: rgb(0.08, 0.45, 0.35),
+        color: sigColor2,
       });
       page.drawText(`Firmante: ${sig2.fullName}`, { x: box2X + 6, y: y + 24, size: 7.5, font: regular });
       page.drawText(`Fecha/Hora: ${sig2.signedAt ? new Date(sig2.signedAt).toISOString() : new Date().toISOString()}`, {
@@ -1520,10 +1556,20 @@ export class PdfRenderEngineService {
       `Documento Oficial GODT Regional 3 — Expediente Inmutable (Pág. ${pageNum} de ${totalPages}) | Generado por: ${meta.generatedByName} el ${meta.generatedAt.toISOString().substring(0, 16)}`,
       {
         x: 40,
-        y: 24,
+        y: 25,
         size: 6.5,
         font: regular,
         color: rgb(0.4, 0.45, 0.5),
+      },
+    );
+    page.drawText(
+      "Atestación operativa/electrónica registrada en plataforma GODT. No constituye firma digital certificada PKI bajo Ley 527 de 1999.",
+      {
+        x: 40,
+        y: 16,
+        size: 6,
+        font: regular,
+        color: rgb(0.55, 0.25, 0.25),
       },
     );
     if (meta.snapshotDigest) {
@@ -1531,8 +1577,8 @@ export class PdfRenderEngineService {
         `Digest de Manifiesto (Contenido): ${meta.snapshotDigest}`,
         {
           x: 40,
-          y: 14,
-          size: 6,
+          y: 8,
+          size: 5.5,
           font: regular,
           color: rgb(0.4, 0.45, 0.5),
         },

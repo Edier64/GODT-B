@@ -146,4 +146,38 @@ export class InstitutionalDocumentController {
     res.setHeader("Content-Length", pdfBuffer.length);
     res.end(pdfBuffer);
   }
+
+  @Get("document-instances/:id/diligenced-docx")
+  @ApiOperation({ summary: "Descargar el documento diligenciado en formato DOCX nativo (especialmente Anexo 5)" })
+  async getDiligencedDocx(
+    @Param("id") instanceId: string,
+    @Res() res: Response,
+  ) {
+    const instance = await this.prisma.documentInstance.findUnique({
+      where: { id: instanceId },
+      include: {
+        donor: true,
+        process: true,
+        currentRevision: true,
+      },
+    });
+
+    if (!instance) {
+      throw new NotFoundException(`Instancia '${instanceId}' no encontrada.`);
+    }
+
+    const responseData = (instance.currentRevision?.responseData as Record<string, unknown>) || {};
+    const buffer = this.institutionalDocs.generateDiligencedAnexo5Docx(responseData, {
+      processCode: instance.process?.processCode,
+      primaryIpsName: instance.process?.primaryIpsName || instance.donor.originatingIpsName,
+      donorName: instance.donor.fullName,
+      donorDocument: instance.donor.documentNumber,
+    });
+
+    const filename = `${instance.documentCode}_PROC-${instance.process?.processCode || "DILIGENCIADO"}.docx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length);
+    res.end(buffer);
+  }
 }

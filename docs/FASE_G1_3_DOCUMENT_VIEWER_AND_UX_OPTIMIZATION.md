@@ -237,3 +237,4 @@ La Fase G.1.3 cumple a cabalidad con todos los lineamientos arquitecturales y fu
 - **Se eliminaron por completo los errores 403 espurios** en la selección de IPS gracias al motor de alias y autocompletado inteligente.
 - **Se desacopló el guardado documental de la resolución de divergencias**, garantizando que ninguna edición clínica se pierda y que las decisiones de conciliación queden debidamente justificadas y auditadas.
 - **28 suites backend y 7 contratos/E2E frontend** validan la estabilidad e integridad de la plataforma.
+
