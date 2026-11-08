@@ -121,7 +121,7 @@ describe("IA Multimodal Integration Suite (Pruebas A, B, C, D, E)", () => {
 
       const mockJpgBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
 
-      global.fetch = jest.fn().mockResolvedValue({
+      const mockJpgResponse = {
         ok: true,
         status: 200,
         json: async () => ({
@@ -148,9 +148,10 @@ describe("IA Multimodal Integration Suite (Pruebas A, B, C, D, E)", () => {
                 ],
               },
             },
-          ]),
+          ],
         }),
-      } as any);
+      };
+      global.fetch = jest.fn().mockResolvedValue(mockJpgResponse as any);
 
       const result = await adapter.process({
         buffer: mockJpgBuffer,
@@ -215,7 +216,7 @@ describe("IA Multimodal Integration Suite (Pruebas A, B, C, D, E)", () => {
       const adapter = new GeminiOcrAdapter(config);
 
       // Markdown code fence válido se limpia correctamente
-      global.fetch = jest.fn().mockResolvedValue({
+      const mockMarkdownResponse = {
         ok: true,
         status: 200,
         json: async () => ({
@@ -229,9 +230,10 @@ describe("IA Multimodal Integration Suite (Pruebas A, B, C, D, E)", () => {
                 ],
               },
             },
-          ]),
+          ],
         }),
-      } as any);
+      };
+      global.fetch = jest.fn().mockResolvedValue(mockMarkdownResponse as any);
 
       const res = await adapter.process({ buffer: Buffer.from("test"), mimeType: "image/png" });
       expect(res).toHaveLength(1);
@@ -279,7 +281,7 @@ describe("IA Multimodal Integration Suite (Pruebas A, B, C, D, E)", () => {
 
       // Usar texto de prueba para simular fallback sobre PDF digital
       const digitalPdfBuffer = Buffer.from(
-        "%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nstream\nPaciente: DONANTE LOCAL FALLBACK CC: 11223344 Grupo: O Factor Rh: Positivo\nendstream\nendobj",
+        "%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nstream\nBT\n/F1 12 Tf\n(Paciente: DONANTE LOCAL FALLBACK Cédula: 11223344 Grupo Sanguíneo: O Factor Rh: Positivo) Tj\nET\nendstream\nendobj",
       );
 
       const result = await service.analyze({
