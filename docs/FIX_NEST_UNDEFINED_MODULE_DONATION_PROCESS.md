@@ -177,3 +177,4 @@ Con los contenedores Docker de PostgreSQL 17 (puerto 5432) y Redis 7.4 (puerto 6
 - **Rama Feature de Trabajo:** `feature/clinical-history-donor-intake-ocr`
 - **Rama `main` Local:** Sincronizada y limpia con respecto a `origin/main` (`Your branch is up to date with 'origin/main'`).
 - **Política de Protección:** **No se realizó merge directo a `main`**, conservando la integridad de la rama principal para su integración mediante Pull Request.
+

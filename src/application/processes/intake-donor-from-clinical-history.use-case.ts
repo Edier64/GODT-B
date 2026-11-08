@@ -51,7 +51,7 @@ export class IntakeDonorFromClinicalHistoryUseCase {
 
     if (!input.file || !input.file.buffer || !input.file.buffer.length) {
       throw new DonationProcessValidationError(
-        "Se requiere un archivo de historia clínica (PDF o DOCX)",
+        "Se requiere un archivo de historia clínica (PDF, DOCX, JPG, PNG, WEBP, TIFF o BMP)",
       );
     }
 

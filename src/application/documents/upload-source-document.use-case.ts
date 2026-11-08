@@ -18,6 +18,10 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "image/jpeg",
   "image/jpg",
+  "image/webp",
+  "image/tiff",
+  "image/bmp",
+  "image/x-ms-bmp",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/msword",
   "application/octet-stream",
@@ -143,6 +147,22 @@ export class UploadSourceDocumentUseCase {
     }
     if (buffer.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) {
       return "image/jpeg";
+    }
+    if (
+      buffer.length >= 12 &&
+      buffer.subarray(0, 4).toString() === "RIFF" &&
+      buffer.subarray(8, 12).toString() === "WEBP"
+    ) {
+      return "image/webp";
+    }
+    if (
+      (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) ||
+      (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a)
+    ) {
+      return "image/tiff";
+    }
+    if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
+      return "image/bmp";
     }
     if (buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
       try {

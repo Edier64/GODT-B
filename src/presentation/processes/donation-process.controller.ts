@@ -93,7 +93,7 @@ export class DonationProcessController {
   ) {
     if (!file) {
       throw new HttpException(
-        "Se requiere un archivo de historia clínica (PDF o DOCX)",
+        "Se requiere un archivo de historia clínica (PDF, DOCX, JPG, PNG, WEBP, TIFF o BMP)",
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }

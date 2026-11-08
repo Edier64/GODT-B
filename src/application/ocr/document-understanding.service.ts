@@ -21,6 +21,7 @@ export interface DocumentUnderstandingOutput {
   candidates: OcrCandidate[];
   strategyUsed: "PDF_DIGITAL" | "PDF_SCANNED" | "IMAGE_OCR" | "DOCX_PARSER";
   pagesProcessed: number;
+  primaryEngineUsed: "GEMINI_AI" | "LOCAL_FALLBACK";
 }
 
 @Injectable()
@@ -41,13 +42,27 @@ export class DocumentUnderstandingService {
     let rawText = "";
     let strategyUsed: DocumentUnderstandingOutput["strategyUsed"] = "IMAGE_OCR";
     let pagesProcessed = 1;
-    let localOcrCandidates: OcrCandidate[] = [];
+    let aiCandidates: OcrCandidate[] = [];
+    let fallbackCandidates: OcrCandidate[] = [];
+    let aiFailed = false;
+    let aiFailureReason = "";
 
+    const isImage =
+      mimeType.startsWith("image/") ||
+      mimeType === "image/jpeg" ||
+      mimeType === "image/png" ||
+      mimeType === "image/webp" ||
+      mimeType === "image/tiff" ||
+      mimeType === "image/bmp" ||
+      mimeType === "image/x-ms-bmp";
+
+    // =========================================================================
     // 1. DOCX: Extracción estructurada nativa de párrafos y tablas
+    // =========================================================================
     if (
       mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       mimeType === "application/msword" ||
-      (buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
+      (!isImage && buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
     ) {
       try {
         const docxResult = extractTextFromDocx(buffer);
@@ -63,7 +78,9 @@ export class DocumentUnderstandingService {
       }
     }
 
-    // 2. PDF: Evaluar capa de texto digital primero; si es escaneado, recurrir a rasterizador/OCR local
+    // =========================================================================
+    // 2. PDF: Evaluar capa de texto digital vs escaneado
+    // =========================================================================
     if (!rawText && mimeType === "application/pdf") {
       const pdfTextResult = extractTextLayerFromPdf(buffer);
       pagesProcessed = pdfTextResult.pageCount;
@@ -77,99 +94,125 @@ export class DocumentUnderstandingService {
       } else {
         strategyUsed = "PDF_SCANNED";
         this.logger.log(
-          `PDF sin capa digital suficiente. Ejecutando motor OCR local para PDF escaneado (${pagesProcessed} páginas).`,
+          `PDF sin capa digital suficiente (${pagesProcessed} páginas). Procesando como documento escaneado mediante IA multimodal.`,
         );
+      }
+    }
 
+    // =========================================================================
+    // 3. Imágenes directas (JPG, PNG, WEBP, TIFF, BMP)
+    // =========================================================================
+    if (isImage) {
+      strategyUsed = "IMAGE_OCR";
+    }
+
+    // =========================================================================
+    // 4. MECANISMO PRINCIPAL: IA MULTIMODAL (Google Gemini)
+    // =========================================================================
+    if (this.geminiAdapter && this.geminiAdapter.isEnabled()) {
+      try {
+        this.logger.log(
+          `Invocando extracción principal mediante IA multimodal (Gemini) para documento ${strategyUsed}...`,
+        );
+        aiCandidates = await this.geminiAdapter.process({
+          buffer,
+          mimeType,
+          rawText: rawText || undefined,
+        });
+
+        this.logger.log(
+          `Extracción con IA multimodal (Gemini) completada como mecanismo principal con ${aiCandidates.length} candidatos generados.`,
+        );
+      } catch (geminiError) {
+        aiFailed = true;
+        aiFailureReason = geminiError instanceof Error ? geminiError.message : "Error desconocido";
+        this.logger.warn(
+          `Extracción con IA multimodal no disponible (${aiFailureReason}). Aplicando mecanismo de respaldo secundario (Tesseract/Reglas locales).`,
+        );
+      }
+    } else {
+      aiFailed = true;
+      aiFailureReason = "Proveedor de IA multimodal deshabilitado o no configurado";
+      this.logger.log(
+        `IA multimodal no activa (${aiFailureReason}). Utilizando mecanismo de procesamiento local.`,
+      );
+    }
+
+    // =========================================================================
+    // 5. MECANISMO SECUNDARIO DE RESPALDO (Fallback si IA falló o campos faltantes)
+    // =========================================================================
+    if (aiCandidates.length === 0 || aiFailed) {
+      // 5.1 Si contamos con texto extraído (PDF digital o DOCX), usar reglas clínicas locales
+      if (rawText && rawText.trim().length > 0) {
+        const localRuleCandidates = this.localRules.extract(rawText, {
+          pageNumber: 1,
+          templateCode: input.templateCode,
+        });
+        for (const cand of localRuleCandidates) {
+          fallbackCandidates.push({
+            ...cand,
+            boundingBox: {
+              ...(cand.boundingBox || {}),
+              engine: "LOCAL_RULES_FALLBACK",
+              provider: "local_rules",
+              isFallback: true,
+              fallbackReason: aiFailureReason,
+            },
+          });
+        }
+      }
+
+      // 5.2 Para imágenes o PDFs escaneados donde no hay texto digital, invocar OCR local secundario si existe
+      if (isImage || strategyUsed === "PDF_SCANNED") {
         if (this.fallbackOcrProvider) {
           try {
-            localOcrCandidates = await this.fallbackOcrProvider.process({ buffer, mimeType });
+            const ocrRes = await this.fallbackOcrProvider.process({ buffer, mimeType });
+            for (const cand of ocrRes) {
+              fallbackCandidates.push({
+                ...cand,
+                boundingBox: {
+                  ...(cand.boundingBox || {}),
+                  engine: "LOCAL_OCR_FALLBACK",
+                  provider: this.fallbackOcrProvider.name,
+                  isFallback: true,
+                  fallbackReason: aiFailureReason,
+                },
+              });
+            }
           } catch (ocrErr) {
             this.logger.warn(
-              `Fallo en proveedor OCR local: ${ocrErr instanceof Error ? ocrErr.message : "Error desconocido"}`,
+              `Fallback OCR local también no disponible: ${ocrErr instanceof Error ? ocrErr.message : "Error"}`,
             );
           }
         }
       }
     }
 
-    // 3. Imágenes directas (PNG / JPEG)
-    if (!rawText && (mimeType === "image/png" || mimeType === "image/jpeg" || mimeType === "image/jpg")) {
-      strategyUsed = "IMAGE_OCR";
-      if (this.fallbackOcrProvider) {
-        try {
-          localOcrCandidates = await this.fallbackOcrProvider.process({ buffer, mimeType });
-        } catch (ocrErr) {
-          this.logger.warn(
-            `Fallo en OCR de imagen: ${ocrErr instanceof Error ? ocrErr.message : "Error desconocido"}`,
-          );
-        }
-      }
-    }
-
-    // 4. Extracción determinista mediante reglas canónicas y normalización local
-    const ruleCandidates = this.localRules.extract(rawText, {
-      pageNumber: 1,
-      templateCode: input.templateCode,
-    });
-
-    // 5. Invocación controlada del proveedor de IA Gemini (si está habilitado y en entorno autorizado)
-    let aiCandidates: OcrCandidate[] = [];
-    if (this.geminiAdapter) {
-      try {
-        if (this.geminiAdapter.isEnabled()) {
-          this.logger.log(
-            `Invocando análisis semántico con Google Gemini para documento ${strategyUsed}...`,
-          );
-          aiCandidates = await this.geminiAdapter.process({
-            buffer,
-            mimeType,
-            rawText: rawText || undefined,
-          });
-          this.logger.log(
-            `Análisis semántico con Gemini completado: ${aiCandidates.length} candidatos propuestos.`,
-          );
-        }
-      } catch (geminiError) {
-        // Fallback controlado: Preservar el OCR/reglas locales ante cualquier fallo externo
-        this.logger.warn(
-          `Extracción semántica externa falló (${
-            geminiError instanceof Error ? geminiError.message : "error"
-          }). Continuando con extracción local offline sin interrupción.`,
-        );
-      }
-    }
-
-    // 6. Consolidación y desduplicación de candidatos
+    // =========================================================================
+    // 6. Consolidación de candidatos: IA tiene precedencia como mecanismo principal
+    // =========================================================================
     const candidateMap = new Map<string, OcrCandidate>();
 
-    // A. Incorporar candidatos de OCR / TSV local
-    for (const cand of localOcrCandidates) {
+    // Primero incorporar los del mecanismo de respaldo
+    for (const cand of fallbackCandidates) {
       candidateMap.set(cand.canonicalFieldKey, cand);
     }
 
-    // B. Incorporar candidatos de reglas clínicas locales (deterministas)
-    for (const cand of ruleCandidates) {
-      const existing = candidateMap.get(cand.canonicalFieldKey);
-      if (!existing || cand.confidenceScore >= existing.confidenceScore) {
-        candidateMap.set(cand.canonicalFieldKey, cand);
-      }
-    }
-
-    // C. Incorporar candidatos validados de Gemini si aportan mayor confianza o campos no detectados
+    // La IA sobrescribe / complementa por ser el mecanismo principal
     for (const cand of aiCandidates) {
-      const existing = candidateMap.get(cand.canonicalFieldKey);
-      if (!existing || cand.confidenceScore >= existing.confidenceScore) {
-        candidateMap.set(cand.canonicalFieldKey, cand);
-      }
+      candidateMap.set(cand.canonicalFieldKey, cand);
     }
 
     const finalCandidates = Array.from(candidateMap.values());
+    const primaryEngineUsed: DocumentUnderstandingOutput["primaryEngineUsed"] =
+      aiCandidates.length > 0 ? "GEMINI_AI" : "LOCAL_FALLBACK";
 
     return {
       rawText,
       candidates: finalCandidates,
       strategyUsed,
       pagesProcessed,
+      primaryEngineUsed,
     };
   }
 }
