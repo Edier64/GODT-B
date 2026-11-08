@@ -257,3 +257,4 @@ npm --prefix D:\Universidad\Diplomado\GODT\Frontend run build
 2. **Transparencia Técnica:** GODT declara con honestidad técnica que el Anexo 5 es nativamente DOCX y que su visualización PDF es una contingencia mientras no se disponga de LibreOffice headless en el servidor.
 3. **Seguridad y Rigor Jurídico:** Se protegió a la institución de contingencias legales bajo la Ley 527 de 1999 y se aisló el alcance de los coordinadores para impedir que un usuario abra procesos en IPS donde no tiene alcance debidamente aprobado.
 4. **Estado de Entrega:** Ambas ramas `feature/fase-g1-3-1-fidelity-and-security-audit` están listas para su integración definitiva en `main`.
+

@@ -11,12 +11,20 @@ describe("InstitutionalDocumentService & Real PDF Overlay (Fase G.1.3)", () => {
   });
 
   describe("Inventario Canónico de Documentos Institucionales", () => {
-    it("debe listar los 19 formatos oficiales y los 4 documentos fuente complementarios", () => {
+    it("debe listar los 19 formatos de plantilla institucionales (homologados y registrados) y los 4 documentos fuente complementarios", () => {
       const inventory = service.listInstitutionalInventory();
       expect(inventory.length).toBeGreaterThanOrEqual(23);
 
-      const officialFormats = inventory.filter((i) => i.status === "OFFICIAL_HOMOLOGATED");
-      expect(officialFormats.length).toBe(19);
+      const templateFormats = inventory.filter(
+        (i) => i.status === "OFFICIAL_HOMOLOGATED" || i.status === "INSTITUTIONAL_REGISTERED_TEMPLATE",
+      );
+      expect(templateFormats.length).toBe(19);
+
+      const officialHomologated = inventory.filter((i) => i.status === "OFFICIAL_HOMOLOGATED");
+      expect(officialHomologated.length).toBe(7);
+
+      const registeredTemplates = inventory.filter((i) => i.status === "INSTITUTIONAL_REGISTERED_TEMPLATE");
+      expect(registeredTemplates.length).toBe(12);
 
       const sourceAttachments = inventory.filter((i) => i.status === "COMPLEMENTARY_SOURCE");
       expect(sourceAttachments.length).toBe(4);

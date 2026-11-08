@@ -39,7 +39,11 @@ export interface InstitutionalDocumentMetadata {
   pageCount: number;
   dimensions: PageDimension[];
   hasAcroForm: boolean;
-  status: "OFFICIAL_HOMOLOGATED" | "PENDING_HOMOLOGATION" | "COMPLEMENTARY_SOURCE";
+  status:
+    | "OFFICIAL_HOMOLOGATED"
+    | "INSTITUTIONAL_REGISTERED_TEMPLATE"
+    | "PENDING_HOMOLOGATION"
+    | "COMPLEMENTARY_SOURCE";
   renderMode: "STATIC_OVERLAY" | "VECTOR_GENERATED" | "SOURCE_ATTACHMENT";
   fidelityStatus: FidelityStatus;
   derivativeMetadata?: DerivativeMetadata;
@@ -86,13 +90,13 @@ const TEMPLATE_FILE_MAP: Record<
     title: "Anexo 4: Registro de Donante y Oferta de Órganos y Tejidos",
     status: "OFFICIAL_HOMOLOGATED",
     renderMode: "STATIC_OVERLAY",
-    fidelityStatus: "FIELD_MAPPING_IN_PROGRESS",
+    fidelityStatus: "RENDER_READY",
   },
   anexo_5: {
     filename: "anexo-5-formato-de-remision-de-muestras.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     title: "Anexo 5: Formato de Remisión de Muestras Biológicas",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "VECTOR_GENERATED",
     fidelityStatus: "REVIEW_REQUIRED",
   },
@@ -108,7 +112,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7- formato-acta-de-rescate-de-tejido-ocular.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Acta de Rescate de Tejido Ocular",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -116,7 +120,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-formato-acta-de-rescate-de-tejido-cardiovascular.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Acta de Rescate de Tejido Cardiovascular",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -124,7 +128,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-formato-acta-de-rescate-de-tejido-osteomuscular.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Acta de Rescate de Tejido Osteomuscular",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -132,7 +136,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-formato-acta-de-rescate-de-tejido-piel.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Acta de Rescate de Tejido Piel",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -140,7 +144,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-corazon-cardiectomia.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Corazón (Cardiectomía)",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -148,7 +152,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-higado-hepatectomia.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Hígado (Hepatectomía)",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -156,7 +160,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-otros-organos.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Otros Órganos",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -164,7 +168,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-pancreas.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Páncreas",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -172,7 +176,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-pulmon-neumonectomia.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Pulmón (Neumonectomía)",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -180,7 +184,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-rinon-derecho-nefrectomia.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Riñón Derecho",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -188,7 +192,7 @@ const TEMPLATE_FILE_MAP: Record<
     filename: "anexo-7-registro-extraccion-rinon-izquierdo-nefrectomia.pdf",
     mimeType: "application/pdf",
     title: "Anexo 7: Registro de Extracción de Riñón Izquierdo",
-    status: "OFFICIAL_HOMOLOGATED",
+    status: "INSTITUTIONAL_REGISTERED_TEMPLATE",
     renderMode: "STATIC_OVERLAY",
     fidelityStatus: "RENDER_READY",
   },
@@ -401,19 +405,32 @@ export class InstitutionalDocumentService {
     const zip = new AdmZip(originalPath);
     let docXml = zip.readAsText("word/document.xml");
 
-    const primaryIps =
-      metadata?.primaryIpsName || data.institucionRemitente || data.ipsOrigen || "IPS Regional 3";
-    const donorName =
-      metadata?.donorName || data.nombreDonante || data.fallecidoNombre || "N/A";
-    const donorDoc =
-      metadata?.donorDocument || data.numeroIdentificacion || data.fallecidoDocumento || "N/A";
-    const causeOfDeath =
-      data.causaMuerte || data.diagnostico || "Muerte Encefálica / Causa Clínica";
-    const bloodGroup = data.grupoSanguineo || data.abo || "O";
-    const rh = data.rh || "+";
-    const observations =
+    const escapeXml = (str: string): string =>
+      String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+
+    const primaryIps = escapeXml(
+      metadata?.primaryIpsName || data.institucionRemitente || data.ipsOrigen || "IPS Regional 3",
+    );
+    const donorName = escapeXml(
+      metadata?.donorName || data.nombreDonante || data.fallecidoNombre || "N/A",
+    );
+    const donorDoc = escapeXml(
+      metadata?.donorDocument || data.numeroIdentificacion || data.fallecidoDocumento || "N/A",
+    );
+    const causeOfDeath = escapeXml(
+      data.causaMuerte || data.diagnostico || "Muerte Encefálica / Causa Clínica",
+    );
+    const bloodGroup = escapeXml(data.grupoSanguineo || data.abo || "O");
+    const rh = escapeXml(data.rh || "+");
+    const observations = escapeXml(
       data.observaciones ||
-      "Muestra recolectada bajo cadena de custodia para pruebas de histocompatibilidad y serología.";
+        "Muestra recolectada bajo cadena de custodia para pruebas de histocompatibilidad y serología.",
+    );
     const currentDate = new Date().toLocaleDateString("es-CO");
     const currentTime = new Date().toLocaleTimeString("es-CO", {
       hour: "2-digit",
@@ -463,8 +480,20 @@ export class InstitutionalDocumentService {
       docXml = docXml.replace("Causa de muerte: ", `Causa de muerte: ${causeOfDeath} `);
     }
 
-    docXml = docXml.replace("Rh  ", `Rh: ${bloodGroup}${rh} `);
-    docXml = docXml.replace("Observaciones: ", `Observaciones: ${observations} `);
+    if (docXml.includes("Rh </w:t>")) {
+      docXml = docXml.replace("Rh </w:t>", `Rh: ${bloodGroup}${rh} </w:t>`);
+    } else {
+      docXml = docXml.replace("Rh  ", `Rh: ${bloodGroup}${rh} `);
+    }
+    const obsTarget = "<w:t>Observaciones:</w:t>";
+    if (docXml.includes(obsTarget)) {
+      docXml = docXml.replace(
+        obsTarget,
+        `<w:t>Observaciones: </w:t></w:r><w:r><w:rPr><w:sz w:val="18"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">${observations} </w:t>`,
+      );
+    } else {
+      docXml = docXml.replace("Observaciones: ", `Observaciones: ${observations} `);
+    }
 
     zip.updateFile("word/document.xml", Buffer.from(docXml, "utf-8"));
     return zip.toBuffer();
