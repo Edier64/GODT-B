@@ -21,7 +21,11 @@ import {
   OcrNotFoundError,
   OcrValidationError,
 } from "../../application/ocr/ocr-errors";
-import { PropagateOcrFieldDto, ValidateOcrFieldDto } from "./ocr.dto";
+import {
+  BatchPropagateOcrFieldsDto,
+  PropagateOcrFieldDto,
+  ValidateOcrFieldDto,
+} from "./ocr.dto";
 
 @ApiTags("ocr")
 @ApiBearerAuth()
@@ -92,6 +96,23 @@ export class OcrController {
   ) {
     return this.workflow
       .propagateToProcess(processId, input.fieldId, actor)
+      .catch((error: unknown) => {
+        throw this.toHttp(error);
+      });
+  }
+
+  @Post("processes/:processId/ocr/batch-propagate")
+  @ApiOperation({
+    summary:
+      "Validar y propagar en bloque múltiples campos OCR a datos canónicos del proceso",
+  })
+  batchPropagateToProcess(
+    @Param("processId") processId: string,
+    @Body() input: BatchPropagateOcrFieldsDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.workflow
+      .batchPropagateToProcess(processId, input.items || [], actor)
       .catch((error: unknown) => {
         throw this.toHttp(error);
       });

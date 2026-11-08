@@ -1,7 +1,9 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
 import { InstitutionModule } from "../institutions/institution.module";
+import { DocumentsModule } from "../documents/documents.module";
+import { OcrModule } from "../ocr/ocr.module";
 import { DonationProcessController } from "./donation-process.controller";
 import { CreateDonationProcessUseCase } from "../../application/processes/create-donation-process.use-case";
 import { GetDonationProcessUseCase } from "../../application/processes/get-donation-process.use-case";
@@ -10,6 +12,7 @@ import { UpdateDonationProcessUseCase } from "../../application/processes/update
 import { AddProcessInstitutionUseCase } from "../../application/processes/add-institution.use-case";
 import { AddProcessParticipantUseCase } from "../../application/processes/add-participant.use-case";
 import { GetDashboardSummaryUseCase } from "../../application/processes/get-dashboard-summary.use-case";
+import { IntakeDonorFromClinicalHistoryUseCase } from "../../application/processes/intake-donor-from-clinical-history.use-case";
 import { DASHBOARD_SUMMARY_PORT } from "../../application/processes/dashboard-summary.port";
 import { PrismaDashboardSummaryRepository } from "../../infrastructure/processes/prisma-dashboard-summary.repository";
 import { PrismaDonationProcessRepository } from "../../infrastructure/processes/prisma-donation-process.repository";
@@ -22,7 +25,13 @@ import { PrismaProcessPackageRepository } from "../../infrastructure/packages/pr
 import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-package.repository";
 
 @Module({
-  imports: [AuthModule, PrismaModule, InstitutionModule],
+  imports: [
+    AuthModule,
+    PrismaModule,
+    InstitutionModule,
+    DocumentsModule,
+    forwardRef(() => OcrModule),
+  ],
   controllers: [DonationProcessController],
   providers: [
     CreateDonationProcessUseCase,
@@ -32,6 +41,7 @@ import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-p
     AddProcessInstitutionUseCase,
     AddProcessParticipantUseCase,
     GetDashboardSummaryUseCase,
+    IntakeDonorFromClinicalHistoryUseCase,
     PrismaDashboardSummaryRepository,
     PrismaDonationProcessRepository,
     PrismaDonorRecordRepository,
@@ -62,6 +72,7 @@ import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-p
     DONATION_PROCESS_REPOSITORY,
     CreateDonationProcessUseCase,
     GetDonationProcessUseCase,
+    IntakeDonorFromClinicalHistoryUseCase,
   ],
 })
 

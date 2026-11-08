@@ -34,6 +34,6 @@ import { DocumentsController } from "./documents.controller";
       },
     },
   ],
-  exports: [FILE_STORAGE_PORT, DOCUMENT_REPOSITORY],
+  exports: [FILE_STORAGE_PORT, DOCUMENT_REPOSITORY, UploadSourceDocumentUseCase, GetSourceDocumentUseCase],
 })
 export class DocumentsModule {}

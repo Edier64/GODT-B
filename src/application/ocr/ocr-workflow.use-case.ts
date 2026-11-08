@@ -80,6 +80,25 @@ export class OcrWorkflowUseCase {
       actor,
     );
 
+    if (
+      typeof this.repository.validateField === "function" &&
+      (field.validationStatus === "PENDIENTE" ||
+        (field.validatedById && field.validatedById !== actor.userId))
+    ) {
+      await this.repository.validateField(fieldId, {
+        status: "CONFIRMADO",
+        userId: actor.userId,
+      });
+      const refreshed = await this.prisma.ocrExtractedField.findUnique({
+        where: { id: fieldId },
+      });
+      if (refreshed) {
+        field.validationStatus = refreshed.validationStatus;
+        field.confirmedValue = refreshed.confirmedValue;
+        field.validatedById = refreshed.validatedById;
+      }
+    }
+
     // 1. Actualizar repositorio OCR y registro de donante
     const result = await this.repository.propagateField(fieldId, actor.userId);
 
@@ -94,10 +113,23 @@ export class OcrWorkflowUseCase {
       )?.id;
 
     if (processId && this.propagationEngine) {
-      const val =
+      let val: any =
         field.validationStatus === "MODIFICADO"
           ? field.confirmedValue
           : field.candidateValue;
+
+      const numericFields = new Set([
+        "donor.demographics.age",
+        "donor.clinical.creatinine",
+        "donor.clinical.arterial_ph",
+      ]);
+      if (numericFields.has(field.canonicalFieldKey) && typeof val === "string") {
+        const parsed = Number(val.replace(",", "."));
+        if (!isNaN(parsed)) {
+          val = parsed;
+        }
+      }
+
       try {
         await this.propagationEngine.applyAndPropagate({
           processId,
@@ -136,6 +168,55 @@ export class OcrWorkflowUseCase {
       actor,
     );
     return this.propagate(field.donorId, fieldId, actor);
+  }
+
+  async batchPropagateToProcess(
+    processId: string,
+    items: Array<{
+      fieldId: string;
+      status: "CONFIRMADO" | "MODIFICADO" | "RECHAZADO";
+      confirmedValue?: string;
+    }>,
+    actor: AuthenticatedUser,
+  ) {
+    const results = [];
+    for (const item of items) {
+      if (item.status === "RECHAZADO") {
+        const validated = await this.validate(
+          item.fieldId,
+          { status: "RECHAZADO" },
+          actor,
+        );
+        results.push({
+          fieldId: item.fieldId,
+          status: "RECHAZADO",
+          result: validated,
+        });
+        continue;
+      }
+
+      if (item.status === "MODIFICADO") {
+        await this.validate(
+          item.fieldId,
+          { status: "MODIFICADO", confirmedValue: item.confirmedValue },
+          actor,
+        );
+      } else {
+        await this.validate(item.fieldId, { status: "CONFIRMADO" }, actor);
+      }
+
+      const propagated = await this.propagateToProcess(
+        processId,
+        item.fieldId,
+        actor,
+      );
+      results.push({
+        fieldId: item.fieldId,
+        status: item.status,
+        result: propagated,
+      });
+    }
+    return results;
   }
 
   private async assertAccess(documentId: string, actor: AuthenticatedUser) {

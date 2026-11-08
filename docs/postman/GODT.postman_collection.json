@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "godt-regional-3-api",
-    "name": "GODT Regional 3 API",
-    "description": "Colección para probar la API REST de GODT. Selecciona el entorno GODT - Local y configura jwtToken.",
+    "_postman_id": "godt-regional-3-api-v2",
+    "name": "GODT Regional 3 — API Integral",
+    "description": "Colección oficial completa para la API REST de GODT Regional 3.\nIncluye autenticación JWT, flujo de Ingesta desde Historia Clínica con OCR de IA Multimodal (Google Gemini), Catálogo y Visor de Formatos Institucionales Originales, Búsqueda de IPS, Propagación Canónica, Ciclo de Vida Documental y Exportación Criptográfica de Expedientes (Dossier).\n\nSelecciona el entorno 'GODT - Regional 3 (Local)' para sincronizar automáticamente variables como jwtToken, processId, donorId, documentId, jobId, etc.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,266 +16,493 @@
   },
   "item": [
     {
-      "name": "Health",
+      "name": "00. Autenticación (Auth)",
       "item": [
+        {
+          "name": "Login - Coordinador Operativo (Guarda jwtToken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.accessToken) {",
+                  "        pm.environment.set('jwtToken', data.accessToken);",
+                  "        console.log('Token JWT actualizado en el entorno');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"coordinador@godt.gov.co\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "Autenticación institucional de Coordinador Operativo. Emite token JWT y aprovisiona el usuario dev si no existe."
+          }
+        },
+        {
+          "name": "Login - Administrador Regional",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.accessToken) {",
+                  "        pm.environment.set('jwtToken', data.accessToken);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@godt.gov.co\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "description": "Autenticación institucional de Administrador con privilegios de gestión de plantillas y catálogo."
+          }
+        },
         {
           "name": "Health check",
           "request": {
+            "auth": { "type": "noauth" },
             "method": "GET",
+            "url": "{{baseUrl}}/health",
+            "description": "Verificación del estado operativo de los servicios del backend (PostgreSQL, Redis, Microservicios)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01. Procesos de Donación (Donation Processes)",
+      "item": [
+        {
+          "name": "★ INGESTA DESDE HISTORIA CLÍNICA (OCR / IA MULTIMODAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.process && data.process.id) {",
+                  "        pm.environment.set('processId', data.process.id);",
+                  "    }",
+                  "    if (data.donor && data.donor.id) {",
+                  "        pm.environment.set('donorId', data.donor.id);",
+                  "    }",
+                  "    if (data.sourceDocument && data.sourceDocument.id) {",
+                  "        pm.environment.set('documentId', data.sourceDocument.id);",
+                  "    }",
+                  "    if (data.ocrJob && data.ocrJob.id) {",
+                  "        pm.environment.set('jobId', data.ocrJob.id);",
+                  "    }",
+                  "    console.log('Variables de proceso, donante, documento y trabajo OCR guardadas exitosamente');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
             "header": [],
-            "url": "{{baseUrl}}/health"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Donantes",
-      "item": [
-        {
-          "name": "Crear expediente",
-          "request": {
-            "method": "POST",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"rndCode\": \"RND-POSTMAN-001\",\n  \"originatingIpsName\": \"IPS E2E\",\n  \"clinicalService\": \"UCI\",\n  \"fullName\": \"Donante sintético Postman\",\n  \"documentNumber\": \"DOC-POSTMAN-001\",\n  \"status\": \"EN_VALORACION\",\n  \"bloodGroup\": \"O\",\n  \"rhFactor\": \"POSITIVE\"\n}"
-            },
-            "url": "{{baseUrl}}/api/v1/donors"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) { pm.environment.set('donorId', pm.response.json().id); }"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "Listar expedientes",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/donors?page=1&pageSize=20"
-          }
-        },
-        {
-          "name": "Consultar expediente",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
-          }
-        },
-        {
-          "name": "Actualizar expediente",
-          "request": {
-            "method": "PATCH",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"clinicalService\": \"UCI Postman\"\n}"
-            },
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
-          }
-        }
-      ]
-    },
-    {
-      "name": "Documentos fuente",
-      "item": [
-        {
-          "name": "Cargar documento",
-          "request": {
-            "method": "POST",
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "file", "type": "file", "src": [] },
-                { "key": "documentCategory", "value": "CERTIFICACION", "type": "text" }
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "Archivo de historia clínica o soporte clínico. Formatos admitidos: PDF, DOCX, JPG, PNG, WEBP, TIFF, BMP (hasta 20 MB).",
+                  "src": []
+                },
+                {
+                  "key": "primaryIpsName",
+                  "value": "{{primaryIpsName}}",
+                  "type": "text",
+                  "description": "Nombre de la IPS generadora (ej. Hospital Universitario del Valle o SURA CENTRO - MEDELLIN)."
+                },
+                {
+                  "key": "notes",
+                  "value": "Ingesta automática con IA Multimodal desde historia clínica",
+                  "type": "text"
+                },
+                {
+                  "key": "processCode",
+                  "value": "PROC-2026-AUTOPM",
+                  "type": "text",
+                  "description": "Código opcional del proceso. Si se omite, el sistema genera uno correlativo automáticamente."
+                }
               ]
             },
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
+            "url": "{{baseUrl}}/api/v1/donation-processes/intake-from-clinical-history",
+            "description": "Endpoint principal de Ingesta desde Historia Clínica. Procesa el documento con IA Multimodal (Google Gemini) como mecanismo principal sin conversión obligatoria a PDF. Normaliza BMP/TIFF en memoria a PNG y activa Tesseract/Reglas locales únicamente como fallback secundario. Crea de forma atómica el proceso de donación, donante provisional (PROV-RND), documento fuente y trabajo OCR con candidatos iniciales extraídos."
           }
         },
         {
-          "name": "Listar documentos",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
-          }
-        },
-        {
-          "name": "Consultar documento",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}"
-          }
-        },
-        {
-          "name": "Descargar documento",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/download"
-          }
-        }
-      ]
-    },
-    {
-      "name": "OCR",
-      "item": [
-        {
-          "name": "Iniciar OCR",
-          "request": {
-            "method": "POST",
-            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/ocr"
-          },
+          "name": "Apertura manual de proceso de donación",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "if (pm.response.code === 201 || pm.response.code === 202) { pm.environment.set('jobId', pm.response.json().id || pm.response.json().jobId); }"
+                  "if (pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.id) pm.environment.set('processId', data.id);",
+                  "    if (data.donorId) pm.environment.set('donorId', data.donorId);",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"processCode\": \"PROC-2026-MANUAL-001\",\n  \"primaryIpsName\": \"{{primaryIpsName}}\",\n  \"status\": \"EN_VALORACION\",\n  \"initialNotes\": \"Apertura manual de prueba Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes"
+          }
         },
         {
-          "name": "Consultar trabajo OCR",
+          "name": "Tablero de control (Dashboard summary)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/dashboard/summary",
+            "description": "Obtiene métricas agregadas en tiempo real de procesos activos, alertas críticas, estados y avances documentales."
+          }
+        },
+        {
+          "name": "Listar procesos de donación con filtros",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/donation-processes?page=1&pageSize=20&status=EN_VALORACION",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "donation-processes"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" },
+                { "key": "status", "value": "EN_VALORACION" },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar proceso de donación por ID",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}"
+          }
+        },
+        {
+          "name": "Actualizar proceso de donación",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"EN_MANTENIMIENTO\",\n  \"notes\": \"Actualización de estado operativa desde Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}"
+          }
+        },
+        {
+          "name": "Asociar IPS participante al proceso",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"institutionName\": \"Fundación Valle del Lili\",\n  \"role\": \"IPS_RECEPTORA\",\n  \"notes\": \"IPS de traslado de órganos\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/institutions"
+          }
+        },
+        {
+          "name": "Asociar participante humano al proceso",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Dr. Juan Manuel Santos\",\n  \"role\": \"MEDICO_INTENSIVISTA\",\n  \"identification\": \"79888999\",\n  \"contactInfo\": \"3101234567\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/participants"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. OCR y Extracción con IA Multimodal",
+      "item": [
+        {
+          "name": "Iniciar trabajo OCR en documento fuente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 202) {",
+                  "    const data = pm.response.json();",
+                  "    pm.environment.set('jobId', data.id || data.jobId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/ocr",
+            "description": "Lanza la ejecución de OCR / IA multimodal sobre un documento fuente ya subido."
+          }
+        },
+        {
+          "name": "Consultar estado de trabajo OCR",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/ocr/jobs/{{jobId}}"
           }
         },
         {
-          "name": "Listar campos OCR",
+          "name": "Listar campos y candidatos extraídos por OCR/IA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const items = pm.response.json();",
+                  "    if (Array.isArray(items) && items.length > 0) {",
+                  "        pm.environment.set('fieldId', items[0].id);",
+                  "        console.log('fieldId guardado en environment:', items[0].id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/api/v1/ocr/jobs/{{jobId}}/fields"
+            "url": "{{baseUrl}}/api/v1/ocr/jobs/{{jobId}}/fields",
+            "description": "Retorna todos los candidatos extraídos por Gemini AI o motor de fallback con sus scores de confianza, snippets probatorios y metadatos de boundingBox."
           }
         },
         {
-          "name": "Validar campo OCR",
+          "name": "Validar campo individual (Confirmar / Modificar / Rechazar)",
           "request": {
             "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"CONFIRMADO\"\n}"
+              "raw": "{\n  \"status\": \"CONFIRMADO\",\n  \"reviewedValue\": \"1037949953\"\n}"
             },
-            "url": "{{baseUrl}}/api/v1/ocr/fields/{{fieldId}}/validation"
+            "url": "{{baseUrl}}/api/v1/ocr/fields/{{fieldId}}/validation",
+            "description": "Aplica gobernanza y revisión humana clínica sobre un candidato OCR. Permite confirmar con el valor extraído o ingresar un valor corregido."
           }
         },
         {
-          "name": "Propagar campo OCR confirmado",
+          "name": "Propagar campo OCR validado al proceso",
           "request": {
             "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"fieldId\": \"{{fieldId}}\"\n}"
             },
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/clinical-data/propagate"
+            "url": "{{baseUrl}}/api/v1/processes/{{processId}}/ocr/propagate"
           }
-        }
-      ]
-    },
-    {
-      "name": "Legalización",
-      "item": [
+        },
         {
-          "name": "Evaluar legalización",
+          "name": "★ Propagación en bloque (Batch Propagate a Process)",
           "request": {
             "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"mechanism\": \"PRESUNCION_LEGAL\",\n  \"isAdult\": true,\n  \"isColombian\": true,\n  \"isResident\": true,\n  \"oppositionRegistered\": false,\n  \"representatives\": []\n}"
+              "raw": "{\n  \"items\": [\n    {\n      \"fieldId\": \"{{fieldId}}\",\n      \"status\": \"CONFIRMADO\"\n    }\n  ]\n}"
             },
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/legalization"
+            "url": "{{baseUrl}}/api/v1/processes/{{processId}}/ocr/batch-propagate",
+            "description": "Valida y propaga atómicamente múltiples candidatos OCR a los valores canónicos del proceso y a las instancias documentales de los anexos."
           }
         }
       ]
     },
     {
-      "name": "Catálogo documental",
+      "name": "03. Catálogo y Visor Institucional (Fase G.1.3 & G.1.4)",
       "item": [
         {
-          "name": "Listar catálogo",
+          "name": "★ Inventario técnico oficial (19 formatos + 4 soportes)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-templates/institutional-inventory",
+            "description": "Retorna el inventario canónico inmutable de los 19 formatos oficiales (Anexos 1 al 19) y los 4 documentos clínicos complementarios de Regional 3 con sus hashes SHA-256 y conteos de páginas."
+          }
+        },
+        {
+          "name": "Metadatos técnicos de formato original",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-templates/{{templateCode}}/original-metadata",
+            "description": "Consulta dimensiones físicas, número de páginas, tamaño en bytes y hash criptográfico del formato institucional original."
+          }
+        },
+        {
+          "name": "★ Visualizar formato institucional original vacío (PDF)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-templates/{{templateCode}}/original-file",
+            "description": "Retorna el archivo PDF original intacto del formato institucional vacío con encabezados Content-Disposition: inline y ETag para visualización en el visor institucional."
+          }
+        },
+        {
+          "name": "Descargar formato original vacío como adjunto",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-templates/{{templateCode}}/original-file?download=true"
+          }
+        },
+        {
+          "name": "★ Visualizar en tiempo real PDF diligenciado de instancia",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/preview-pdf",
+            "description": "Renderiza en alta fidelidad el formato institucional original diligenciado con los valores canónicos y datos del formulario del proceso en tiempo real."
+          }
+        },
+        {
+          "name": "Descargar PDF diligenciado de instancia",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/preview-pdf?download=true"
+          }
+        },
+        {
+          "name": "Listar catálogo documental general",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/document-catalog"
           }
         },
         {
-          "name": "Crear plantilla (ADMIN)",
+          "name": "Crear plantilla documental (ADMIN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('templateId', pm.response.json().id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"templateCode\": \"ANEXO-1-POSTMAN\",\n  \"name\": \"Anexo 1 - Prueba\",\n  \"category\": \"PILOTO\"\n}"
+              "raw": "{\n  \"templateCode\": \"ANEXO-TEST-POSTMAN\",\n  \"name\": \"Anexo de Prueba Postman\",\n  \"category\": \"REGIONAL_3\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/document-catalog"
-          },
+          }
+        },
+        {
+          "name": "Crear versión borrador de plantilla (ADMIN)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "if (pm.response.code === 201) { pm.environment.set('templateId', pm.response.json().id); }"
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('versionId', pm.response.json().id);",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
             }
-          ]
-        },
-        {
-          "name": "Crear versión borrador (ADMIN)",
+          ],
           "request": {
             "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"versionNumber\": \"1.0.0\",\n  \"effectiveFrom\": \"2026-11-02T00:00:00.000Z\",\n  \"jsonSchema\": {\n    \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n    \"type\": \"object\",\n    \"additionalProperties\": false,\n    \"required\": [\"code\"],\n    \"properties\": { \"code\": { \"type\": \"string\", \"minLength\": 1 } }\n  },\n  \"uiSchema\": { \"sections\": [{ \"id\": \"main\", \"fields\": [\"code\"] }] },\n  \"mappingConfig\": []\n}"
+              "raw": "{\n  \"versionNumber\": \"1.0.0\",\n  \"effectiveFrom\": \"2026-11-08T00:00:00.000Z\",\n  \"jsonSchema\": {\n    \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n    \"type\": \"object\",\n    \"properties\": { \"observaciones\": { \"type\": \"string\" } }\n  },\n  \"uiSchema\": { \"sections\": [{ \"id\": \"main\", \"fields\": [\"observaciones\"] }] },\n  \"mappingConfig\": []\n}"
             },
             "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) { pm.environment.set('versionId', pm.response.json().id); }"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
+          }
         },
         {
-          "name": "Listar versiones",
+          "name": "Listar versiones de plantilla",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions"
           }
         },
         {
-          "name": "Validar versión (ADMIN)",
+          "name": "Validar versión de plantilla (ADMIN)",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions/{{versionId}}/validate"
           }
         },
         {
-          "name": "Publicar versión (ADMIN)",
+          "name": "Publicar versión de plantilla (ADMIN)",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/document-catalog/{{templateId}}/versions/{{versionId}}/publish"
@@ -284,29 +511,155 @@
       ]
     },
     {
-      "name": "Instancias documentales",
+      "name": "04. Instituciones e IPS (Autocompletado y Búsqueda)",
       "item": [
         {
-          "name": "Crear instancia",
+          "name": "★ Búsqueda de IPS con autocompletado y alias (ej. 'Valle')",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institutions/search?q=Valle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "institutions", "search"],
+              "query": [{ "key": "q", "value": "Valle" }]
+            },
+            "description": "Permite autocompletar instituciones prestadoras de salud en los formularios y pantallas de apertura de proceso."
+          }
+        },
+        {
+          "name": "Búsqueda de IPS por alias o aproximación (ej. 'SURA')",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/institutions/search?q=SURA",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "institutions", "search"],
+              "query": [{ "key": "q", "value": "SURA" }]
+            }
+          }
+        },
+        {
+          "name": "Registrar nueva IPS con verificación de duplicados",
           "request": {
             "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"templateVersionId\": \"{{versionId}}\",\n  \"responseData\": { \"code\": \"BORRADOR-001\" },\n  \"sourceProvenance\": []\n}"
+              "raw": "{\n  \"name\": \"Clínica de Occidente de Cali\",\n  \"nit\": \"890300456-1\",\n  \"municipality\": \"Cali\",\n  \"department\": \"Valle del Cauca\",\n  \"level\": \"NIVEL_3\"\n}"
             },
-            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/document-instances"
-          },
+            "url": "{{baseUrl}}/api/v1/institutions"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Diccionario y Propagación Canónica",
+      "item": [
+        {
+          "name": "Catálogo maestro de marcadores canónicos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/canonical-fields/catalog",
+            "description": "Retorna todos los marcadores del diccionario canónico con sus categorías (identidad, demografía, clínica, paraclínicos) y reglas de inmutabilidad (READONLY_DERIVED)."
+          }
+        },
+        {
+          "name": "Consultar valores canónicos vigentes del proceso",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values"
+          }
+        },
+        {
+          "name": "Consultar valor canónico por clave específica",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values/{{canonicalFieldKey}}"
+          }
+        },
+        {
+          "name": "Historial de revisiones de marcador",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values/{{canonicalFieldKey}}/history"
+          }
+        },
+        {
+          "name": "Serie temporal de observaciones clínicas (pH, creatinina)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values/{{canonicalFieldKey}}/observations",
+            "description": "Consulta mediciones secuenciales con timestamp para paraclínicos repetibles."
+          }
+        },
+        {
+          "name": "Consultar conflictos activos de valores canónicos",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values/conflicts"
+          }
+        },
+        {
+          "name": "Aplicar valor canónico desde instancia documental",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fieldKey\": \"donor.identity.full_name\",\n  \"value\": \"ANDRES FRANCO DAZA\",\n  \"sourceType\": \"FORM_USER_INPUT\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/canonical-values"
+          }
+        },
+        {
+          "name": "Resolver conflicto canónico",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fieldKey\": \"donor.identity.document_number\",\n  \"decision\": \"ACCEPT_EXISTING\",\n  \"justification\": \"Documento verificado contra cédula original\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/canonical-values/conflicts/resolve"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Instancias Documentales y Ciclo de Vida",
+      "item": [
+        {
+          "name": "Crear instancia documental de un anexo",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "if (pm.response.code === 201) { pm.environment.set('instanceId', pm.response.json().id); }"
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('instanceId', pm.response.json().id);",
+                  "}"
                 ],
                 "type": "text/javascript"
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"templateVersionId\": \"{{versionId}}\",\n  \"responseData\": { \"observaciones\": \"Primera versión diligenciada\" },\n  \"sourceProvenance\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/document-instances"
+          }
         },
         {
           "name": "Listar instancias del expediente",
@@ -316,39 +669,240 @@
           }
         },
         {
-          "name": "Consultar instancia e historial",
+          "name": "Consultar instancia e historial de revisiones",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}"
           }
         },
         {
-          "name": "Guardar nueva revisión",
+          "name": "Guardar nueva revisión (Gobernanza append-only)",
           "request": {
             "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"responseData\": { \"code\": \"REVISION-002\" },\n  \"sourceProvenance\": []\n}"
+              "raw": "{\n  \"responseData\": { \"observaciones\": \"Revisión actualizada por el coordinador\" },\n  \"sourceProvenance\": []\n}"
             },
             "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}"
           }
         },
         {
-          "name": "Validar instancia",
+          "name": "Validar conformidad de instancia",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/validate"
           }
+        }
+      ]
+    },
+    {
+      "name": "07. Expediente Documental Consolidado (Dossier)",
+      "item": [
+        {
+          "name": "Solicitar exportación del expediente (ZIP / PDF)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const data = pm.response.json();",
+                  "    pm.environment.set('exportId', data.exportId || data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exportType\": \"ALL\",\n  \"includeSourceDocuments\": true\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports",
+            "description": "Inicia la compilación del expediente unificado con cálculo de hash SHA-256 por archivo y manifiesto criptográfico."
+          }
         },
         {
-          "name": "Resolver conflicto",
+          "name": "Historial de exportaciones del expediente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports"
+          }
+        },
+        {
+          "name": "Consultar estado de una exportación",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports/{{exportId}}"
+          }
+        },
+        {
+          "name": "Descargar paquete completo del expediente (ZIP)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports/{{exportId}}/download",
+            "description": "Descarga el ZIP con todos los anexos oficiales en PDF, documentos clínicos fuente y manifiesto JSON."
+          }
+        },
+        {
+          "name": "Visualizar PDF continuo consolidado",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports/{{exportId}}/consolidated-pdf"
+          }
+        },
+        {
+          "name": "Obtener manifiesto criptográfico de integridad",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports/{{exportId}}/manifest"
+          }
+        },
+        {
+          "name": "Verificar integridad criptográfica del expediente",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/donation-processes/{{processId}}/dossier/exports/{{exportId}}/verify"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Documentos Fuente y Soporte",
+      "item": [
+        {
+          "name": "Cargar documento fuente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('documentId', pm.response.json().id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"fieldPath\": \"code\",\n  \"decision\": \"MANUAL_SELECTED\",\n  \"justification\": \"Decisión documentada por el usuario autorizado\"\n}"
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "documentCategory", "value": "HISTORIA_CLINICA", "type": "text" }
+              ]
             },
-            "url": "{{baseUrl}}/api/v1/document-instances/{{instanceId}}/conflicts/resolve"
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
+          }
+        },
+        {
+          "name": "Listar documentos fuente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/documents"
+          }
+        },
+        {
+          "name": "Consultar metadatos de documento fuente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "Descargar archivo binario original",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/documents/{{documentId}}/download"
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Donantes (Expedientes Legados / V1)",
+      "item": [
+        {
+          "name": "Crear expediente de donante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('donorId', pm.response.json().id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rndCode\": \"RND-POSTMAN-001\",\n  \"originatingIpsName\": \"Hospital Universitario del Valle\",\n  \"clinicalService\": \"UCI\",\n  \"fullName\": \"Donante Sintético Postman\",\n  \"documentNumber\": \"DOC-POSTMAN-001\",\n  \"status\": \"EN_VALORACION\",\n  \"bloodGroup\": \"O\",\n  \"rhFactor\": \"POSITIVE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors"
+          }
+        },
+        {
+          "name": "Listar expedientes de donantes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors?page=1&pageSize=20"
+          }
+        },
+        {
+          "name": "Consultar expediente de donante",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
+          }
+        },
+        {
+          "name": "Actualizar expediente de donante",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clinicalService\": \"UCI Neurocríticos\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Legalización",
+      "item": [
+        {
+          "name": "Evaluar legalización (Presunción Legal / Consentimiento)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mechanism\": \"PRESUNCION_LEGAL\",\n  \"isAdult\": true,\n  \"isColombian\": true,\n  \"isResident\": true,\n  \"oppositionRegistered\": false,\n  \"representatives\": []\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/donors/{{donorId}}/legalization"
           }
         }
       ]

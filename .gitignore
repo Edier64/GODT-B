@@ -45,6 +45,7 @@ lerna-debug.log*
 **/pdf-temp/
 **/uploads/
 **/quarantine/
+test-output/
 
 # Variables y credenciales
 .env

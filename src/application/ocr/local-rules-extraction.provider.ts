@@ -39,16 +39,31 @@ export class LocalRulesExtractionProvider {
         },
       });
 
-      // Deducir tipo de documento si está explícito
-      const docTypeMatch = docMatch[0].match(/\b(CC|TI|CE|PASAPORTE|RC)\b/i);
+      // Deducir tipo de documento si está explícito en docMatch o en campo específico
+      let docTypeMatch = docMatch[0].match(/\b(CC|TI|CE|PASAPORTE|RC)\b/i);
+      let snippetIndex = docMatch.index ?? 0;
+      let snippetLength = docMatch[0].length;
+
+      if (!docTypeMatch) {
+        const standaloneTypeMatch = text.match(
+          /(?:Tipo(?:\s+de)?(?:\s+Documento|\s+Identificaci[oó]n|\s+Doc)?\s*[:\s-]?\s*)\b(CC|TI|CE|PASAPORTE|RC|MS)\b/i,
+        );
+        if (standaloneTypeMatch) {
+          docTypeMatch = standaloneTypeMatch;
+          snippetIndex = standaloneTypeMatch.index ?? snippetIndex;
+          snippetLength = standaloneTypeMatch[0].length;
+        }
+      }
+
       if (docTypeMatch) {
+        const detectedType = (docTypeMatch[1] || docTypeMatch[0]).toUpperCase().trim();
         candidates.push({
           canonicalFieldKey: "donor.identity.document_type",
-          candidateValue: docTypeMatch[1].toUpperCase(),
+          candidateValue: detectedType,
           confidenceScore: 0.92,
           pageNumber,
           boundingBox: {
-            snippet: this.getSnippet(text, docMatch.index ?? 0, docMatch[0].length),
+            snippet: this.getSnippet(text, snippetIndex, snippetLength),
             rule: "DONOR_DOCUMENT_TYPE",
           },
         });
@@ -56,12 +71,21 @@ export class LocalRulesExtractionProvider {
     }
 
     // 2. Nombre completo del donante / paciente
+    // Prioriza "Nombre Completo:", "Nombres y Apellidos:", "Nombre:", o "Paciente:" con delimitador formal
     const nameMatch = text.match(
-      /(?:(?:Nombre(?:s)?(?:\s+y\s+Apellidos)?|Paciente|Donante|Fallecido)\s*[:\s-]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ]{2,}(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]{2,}){1,4})/i,
+      /(?:(?:\bNombre(?:s)?(?:\s+Completo)?(?:\s+y\s+Apellidos)?\s*[:\s-]?\s*)|\b(?:Paciente|Donante|Fallecido)\s*[:\-]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ]{2,}(?:[ \t]+[A-ZÁÉÍÓÚÑa-záéíóúñ]{2,}){1,4})/i,
     );
     if (nameMatch && nameMatch[1]) {
-      const cleanName = nameMatch[1].trim();
-      if (!/^(del|los|las|san|santa|uci|hospital|ips)\b/i.test(cleanName)) {
+      let cleanName = nameMatch[1].trim();
+      // Eliminar palabras de cabecera de la siguiente línea o campo adyacente
+      cleanName = cleanName
+        .replace(/\s+\b(?:TIPO|IDENTIFICACI[ÓO]N|DOCUMENTO|CC|TI|CE|ID|EDAD|SEXO|FECHA)\b.*$/i, "")
+        .trim();
+      if (
+        !/^(del|los|las|san|santa|uci|hospital|ips)\b/i.test(cleanName) &&
+        !cleanName.toUpperCase().includes("PACIENTE REAL") &&
+        cleanName.length >= 3
+      ) {
         candidates.push({
           canonicalFieldKey: "donor.identity.full_name",
           candidateValue: cleanName,
@@ -91,16 +115,34 @@ export class LocalRulesExtractionProvider {
         },
       });
 
+      // 3.1 Deducir Factor Rh si viene adjunto o en línea separada
+      let normalizedRh: string | undefined = undefined;
+      let rhSnippetIndex = bloodMatch.index ?? 0;
+      let rhSnippetLength = bloodMatch[0].length;
+
       if (bloodMatch[2]) {
         const rawRh = bloodMatch[2].toUpperCase();
-        const normalizedRh = rawRh.startsWith("+") || rawRh.includes("POS") ? "+" : "-";
+        normalizedRh = rawRh.startsWith("+") || rawRh.includes("POS") ? "+" : "-";
+      } else {
+        const standaloneRhMatch = text.match(
+          /(?:(?:Factor\s+)?Rh)\s*[:\s-]?\s*([+-]|POS(?:ITIVO)?|NEG(?:ATIVO)?)\b/i,
+        );
+        if (standaloneRhMatch && standaloneRhMatch[1]) {
+          const rawRh = standaloneRhMatch[1].toUpperCase();
+          normalizedRh = rawRh.startsWith("+") || rawRh.includes("POS") ? "+" : "-";
+          rhSnippetIndex = standaloneRhMatch.index ?? rhSnippetIndex;
+          rhSnippetLength = standaloneRhMatch[0].length;
+        }
+      }
+
+      if (normalizedRh) {
         candidates.push({
           canonicalFieldKey: "donor.clinical.rh_factor",
           candidateValue: normalizedRh,
           confidenceScore: 0.96,
           pageNumber,
           boundingBox: {
-            snippet: this.getSnippet(text, bloodMatch.index ?? 0, bloodMatch[0].length),
+            snippet: this.getSnippet(text, rhSnippetIndex, rhSnippetLength),
             rule: "RH_FACTOR",
           },
         });
@@ -151,10 +193,14 @@ export class LocalRulesExtractionProvider {
 
     // 6. IPS Generadora / Hospital
     const ipsMatch = text.match(
-      /(?:(?:IPS(?:\s+Generadora)?|Hospital(?:\s+de)?|Instituci[oó]n|Cl[íi]nica)\s*[:\s-]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s.-]{4,60})/i,
+      /(?:(?:\b(?:IPS(?:\s+Generadora)?|Hospital(?:\s+de)?|Instituci[oó]n(?:\s+Remitente(?:\s*\/\s*Generadora)?)?)\s*[:\s-]?\s*)|\bCl[íi]nica\s*[:]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s.-]{4,60})/i,
     );
     if (ipsMatch && ipsMatch[1]) {
-      const cleanIps = ipsMatch[1].trim();
+      let cleanIps = ipsMatch[1].trim();
+      cleanIps = cleanIps
+        .split(/\r?\n/)[0]
+        .replace(/\s+\b(?:SERVICIO|UBICACI[ÓO]N|PACIENTE|NOMBRE|DONANTE|FECHA)\b.*$/i, "")
+        .trim();
       candidates.push({
         canonicalFieldKey: "donor.institution.originating_ips",
         candidateValue: cleanIps,
@@ -186,12 +232,17 @@ export class LocalRulesExtractionProvider {
 
     // 8. Causa de Muerte
     const causeMatch = text.match(
-      /(?:(?:Causa(?:\s+de)?\s+(?:Muerte|Fallecimiento)|Diagn[oó]stico(?:\s+de\s+Ingreso)?)\s*[:\s-]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s,.-]{4,80})/i,
+      /(?:(?:Causa(?:\s+de)?\s+(?:Muerte|Fallecimiento)|Diagn[oó]stico(?:\s*(?:\/|\s)\s*Causa\s+de\s+Muerte)?(?:\s+de\s+Ingreso)?)\s*[:\s-]\s*)([A-ZÁÉÍÓÚÑa-záéíóúñ0-9\s,.-]{4,80})/i,
     );
     if (causeMatch && causeMatch[1]) {
+      let cleanCause = causeMatch[1].trim();
+      cleanCause = cleanCause
+        .split(/\r?\n/)[0]
+        .replace(/\s+\b(?:FECHA|HORA|INGRESO|PARACL[IÍ]NICOS?|VALORACI[ÓO]N|CREATININA|GASOMETR[IÍ]A|RND)\b.*$/i, "")
+        .trim();
       candidates.push({
         canonicalFieldKey: "donor.clinical.cause_of_death",
-        candidateValue: causeMatch[1].trim(),
+        candidateValue: cleanCause,
         confidenceScore: 0.86,
         pageNumber,
         boundingBox: {

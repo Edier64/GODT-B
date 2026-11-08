@@ -107,9 +107,32 @@ describe("InstitutionService — Autocomplete, Aliases & Controlled Scopes (Fase
       expect(resolved.institutionId).toBe("inst-2");
     });
 
-    it("los coordinadores y administradores deben tener alcance transversal sobre cualquier IPS", async () => {
+    it("únicamente el rol ADMIN tiene alcance transversal global sobre cualquier IPS", async () => {
       const resolved = await service.resolveIpsForProcess("Hospital del Valle", adminUser);
       expect(resolved.canonicalName).toBe("Hospital Universitario del Valle");
+    });
+
+    it("el rol COORDINATOR sin alcance aprobado en la IPS solicitada es RECHAZADO con ForbiddenException", async () => {
+      const coordinatorWithoutAccess: AuthenticatedUser = {
+        userId: "coord-unauthorized-1",
+        role: "COORDINATOR",
+        institutionalIps: ["Clínica Imbanaco"],
+      };
+
+      await expect(
+        service.resolveIpsForProcess("Hospital Universitario del Valle", coordinatorWithoutAccess),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("el rol COORDINATOR con alcance aprobado en la IPS solicitada es AUTORIZADO", async () => {
+      const coordinatorWithAccess: AuthenticatedUser = {
+        userId: "user-doc-2",
+        role: "COORDINATOR",
+        institutionalIps: ["Clínica Imbanaco"],
+      };
+
+      const resolved = await service.resolveIpsForProcess("Imbanaco", coordinatorWithAccess);
+      expect(resolved.canonicalName).toBe("Clínica Imbanaco");
     });
 
     it("debe lanzar ForbiddenException si un usuario sin rol transversal intenta abrir proceso en IPS no autorizada", async () => {
