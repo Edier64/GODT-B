@@ -298,12 +298,19 @@ export class CanonicalPropagationEngine {
           });
         } else {
           // No sobreescribe silenciosamente: genera conflicto
+          const existingProvenance = ((inst.currentRevision as any)?.provenance as any[])?.find(
+            (p: any) => p.fieldPath === fieldPath,
+          );
           result.conflicts.push({
             instanceId: inst.id,
             documentCode: inst.documentCode,
             fieldPath,
+            canonicalFieldKey: input.canonicalFieldKey,
             existingValue: existingVal,
             proposedValue: input.value,
+            existingSourceKind: (existingProvenance?.sourceKind as string) || "UNKNOWN",
+            existingEffectiveAt: existingProvenance?.validatedAt || new Date(),
+            sourceInstanceId: input.sourceInstanceId || undefined,
           });
           result.propagatedInstances.push({
             instanceId: inst.id,
