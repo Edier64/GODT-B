@@ -148,8 +148,12 @@ export interface PropagationResult {
     instanceId: string;
     documentCode: string;
     fieldPath: string;
+    canonicalFieldKey: string;
     existingValue: unknown;
     proposedValue: unknown;
+    existingSourceKind?: string;
+    existingEffectiveAt?: Date | string;
+    sourceInstanceId?: string;
   }>;
 }
 

@@ -21,6 +21,7 @@ import {
   PROCESS_PACKAGE_REPOSITORY,
   ProcessPackageRepository,
 } from "../packages/process-package.repository";
+import { InstitutionService } from "../institutions/institution.service";
 import {
   OFFICIAL_REGIONAL_3_POSITIONS,
   PackagePositionDefinition,
@@ -38,6 +39,8 @@ export class CreateDonationProcessUseCase {
     @Optional()
     @Inject(PROCESS_PACKAGE_REPOSITORY)
     private readonly packageRepository?: ProcessPackageRepository,
+    @Optional()
+    private readonly institutionService?: InstitutionService,
   ) {}
 
   async execute(
@@ -47,16 +50,26 @@ export class CreateDonationProcessUseCase {
     if (!input.primaryIpsName || typeof input.primaryIpsName !== "string" || !input.primaryIpsName.trim()) {
       throw new DonationProcessValidationError("primaryIpsName es requerida");
     }
-    const primaryIpsName = input.primaryIpsName.trim();
 
-    // Verificar alcance institucional
-    if (
-      user.role !== "ADMIN" &&
-      !user.institutionalIps?.includes(primaryIpsName)
-    ) {
-      throw new DonationProcessAccessDeniedError(
-        "No tiene autorización para abrir un proceso en la IPS indicada",
+    let primaryIpsName = input.primaryIpsName.trim();
+
+    // Resolver y validar alcance institucional mediante el servicio de entidades maestras
+    if (this.institutionService) {
+      const resolved = await this.institutionService.resolveIpsForProcess(
+        primaryIpsName,
+        user,
       );
+      primaryIpsName = resolved.canonicalName;
+    } else {
+      // Verificación directa de respaldo para pruebas unitarias sin servicio de entidades
+      if (
+        user.role !== "ADMIN" &&
+        !user.institutionalIps?.includes(primaryIpsName)
+      ) {
+        throw new DonationProcessAccessDeniedError(
+          "No tiene autorización para abrir un proceso en la IPS indicada",
+        );
+      }
     }
 
     // Resolver el donante: existente o nuevo registro preliminar/provisional

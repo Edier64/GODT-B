@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { PrismaModule } from "../../infrastructure/prisma/prisma.module";
+import { InstitutionModule } from "../institutions/institution.module";
 import { DonationProcessController } from "./donation-process.controller";
 import { CreateDonationProcessUseCase } from "../../application/processes/create-donation-process.use-case";
 import { GetDonationProcessUseCase } from "../../application/processes/get-donation-process.use-case";
@@ -21,7 +22,7 @@ import { PrismaProcessPackageRepository } from "../../infrastructure/packages/pr
 import { PROCESS_PACKAGE_REPOSITORY } from "../../application/packages/process-package.repository";
 
 @Module({
-  imports: [AuthModule, PrismaModule],
+  imports: [AuthModule, PrismaModule, InstitutionModule],
   controllers: [DonationProcessController],
   providers: [
     CreateDonationProcessUseCase,

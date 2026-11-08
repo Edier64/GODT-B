@@ -7,19 +7,28 @@ import { DocumentResponseValidator } from "../../application/document-engine/doc
 import { DOCUMENT_ENGINE_REPOSITORY } from "../../application/document-engine/document-engine.repository";
 import { PrismaDocumentEngineRepository } from "../../infrastructure/document-engine/prisma-document-engine.repository";
 import { DocumentEngineController } from "./document-engine.controller";
+import { InstitutionalDocumentController } from "./institutional-document.controller";
+import { InstitutionalDocumentService } from "../../application/pdf/institutional-document.service";
+import { PdfRenderEngineService } from "../../application/pdf/pdf-render-engine.service";
 
 @Module({
   imports: [AuthModule, PrismaModule],
-  controllers: [DocumentEngineController],
+  controllers: [DocumentEngineController, InstitutionalDocumentController],
   providers: [
     DocumentEngineService,
     DocumentDefinitionValidator,
     DocumentResponseValidator,
     PrismaDocumentEngineRepository,
+    InstitutionalDocumentService,
+    PdfRenderEngineService,
     {
       provide: DOCUMENT_ENGINE_REPOSITORY,
       useExisting: PrismaDocumentEngineRepository,
     },
+  ],
+  exports: [
+    InstitutionalDocumentService,
+    PdfRenderEngineService,
   ],
 })
 export class DocumentEngineModule {}

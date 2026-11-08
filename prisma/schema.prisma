@@ -142,6 +142,7 @@ model SystemUser {
   custodyEventsRecorded CustodyEvent[]            @relation("CustodyEventRecorder")
   custodyEventsVerified CustodyEvent[]            @relation("CustodyIntegrityVerifier")
   dossierExports        ProcessDossierExport[]    @relation("DossierExportRequester")
+  institutionScopes     UserInstitutionScope[]    @relation("UserInstitutionScopes")
 
   @@map("SYSTEM_USER")
 }
@@ -873,4 +874,56 @@ model ProcessDossierExport {
   @@index([status])
   @@map("PROCESS_DOSSIER_EXPORT")
 }
+
+model InstitutionEntity {
+  id               String                 @id @default(uuid()) @db.Uuid
+  code             String?                @unique @db.VarChar(50)
+  name             String                 @unique @db.VarChar(200)
+  normalizedName   String                 @map("normalized_name") @db.VarChar(200)
+  city             String                 @db.VarChar(100)
+  department       String?                @db.VarChar(100)
+  complexityLevel  String?                @map("complexity_level") @db.VarChar(50)
+  status           String                 @default("ACTIVE") @db.VarChar(50)
+  createdById      String?                @map("created_by_id") @db.Uuid
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  aliases          InstitutionAlias[]
+  userScopes       UserInstitutionScope[]
+
+  @@index([normalizedName])
+  @@index([city])
+  @@map("INSTITUTION_ENTITY")
+}
+
+model InstitutionAlias {
+  id               String            @id @default(uuid()) @db.Uuid
+  institutionId    String            @map("institution_id") @db.Uuid
+  alias            String            @db.VarChar(200)
+  normalizedAlias  String            @map("normalized_alias") @db.VarChar(200)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  institution      InstitutionEntity @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([institutionId, normalizedAlias])
+  @@index([normalizedAlias])
+  @@map("INSTITUTION_ALIAS")
+}
+
+model UserInstitutionScope {
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           String            @map("user_id") @db.Uuid
+  institutionId    String            @map("institution_id") @db.Uuid
+  status           String            @default("APPROVED") @db.VarChar(50)
+  requestedAt      DateTime          @default(now()) @map("requested_at") @db.Timestamptz(6)
+  approvedAt       DateTime?         @map("approved_at") @db.Timestamptz(6)
+  approvedById     String?           @map("approved_by_id") @db.Uuid
+
+  institution      InstitutionEntity @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  user             SystemUser        @relation("UserInstitutionScopes", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, institutionId])
+  @@map("USER_INSTITUTION_SCOPE")
+}
+
 

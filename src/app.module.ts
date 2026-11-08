@@ -14,6 +14,7 @@ import { ProcessPackageModule } from "./presentation/packages/process-package.mo
 import { CanonicalDictionaryModule } from "./presentation/canonical/canonical-dictionary.module";
 import { DocumentLifecycleModule } from "./presentation/document-lifecycle/document-lifecycle.module";
 import { DossierModule } from "./presentation/dossier/dossier.module";
+import { InstitutionModule } from "./presentation/institutions/institution.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { DossierModule } from "./presentation/dossier/dossier.module";
     CanonicalDictionaryModule,
     DocumentLifecycleModule,
     DossierModule,
+    InstitutionModule,
   ],
 })
 export class AppModule {}

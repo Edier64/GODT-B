@@ -1,5 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
+import { InstitutionalDocumentService } from "./institutional-document.service";
+import { INSTITUTIONAL_OVERLAYS, drawTextWrapped } from "./institutional-coordinates";
 
 export interface PdfRenderInput {
   documentCode: string;
@@ -44,12 +46,99 @@ export interface PdfRenderInput {
 
 @Injectable()
 export class PdfRenderEngineService {
+  constructor(
+    @Optional()
+    private readonly institutionalDocs?: InstitutionalDocumentService,
+  ) {
+    if (!this.institutionalDocs) {
+      this.institutionalDocs = new InstitutionalDocumentService();
+    }
+  }
+
   async render(input: PdfRenderInput): Promise<Buffer> {
+    const docCode = input.documentCode.toUpperCase();
+    const normalizedKey = this.institutionalDocs?.normalizeDocumentCode(docCode) || "";
+
+    // 1. Si existe formato PDF institucional original, utilizarlo como fondo base fiel
+    if (this.institutionalDocs && this.institutionalDocs.hasOriginalPdf(docCode)) {
+      try {
+        const originalBytes = this.institutionalDocs.getOriginalDocumentBuffer(docCode);
+        const pdfDoc = await PDFDocument.load(originalBytes);
+        const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        // Estampar campos diligenciados sobre las coordenadas correspondientes
+        const overlays = INSTITUTIONAL_OVERLAYS[normalizedKey] || [];
+        const pages = pdfDoc.getPages();
+
+        for (const field of overlays) {
+          if (field.pageIndex < pages.length) {
+            const page = pages[field.pageIndex];
+            const rawVal = field.getValue(input.data, input.metadata);
+            if (rawVal !== undefined && rawVal !== null && rawVal !== "") {
+              const text = String(rawVal);
+              const fontSize = field.fontSize || 8.5;
+              const font = field.isBold ? fontBold : fontRegular;
+              const color = field.color
+                ? rgb(field.color.r, field.color.g, field.color.b)
+                : rgb(0.06, 0.16, 0.26);
+
+              if (field.maxWidth) {
+                drawTextWrapped(page, text, field.x, field.y, font, fontSize, field.maxWidth, color);
+              } else {
+                page.drawText(text, { x: field.x, y: field.y, size: fontSize, font, color });
+              }
+            }
+          }
+        }
+
+        // Trazabilidad operacional al pie de la última página
+        const lastPage = pages[pages.length - 1];
+        const statusLabel = input.metadata.revisionNumber ? `Rev #${input.metadata.revisionNumber}` : "Borrador";
+        const digestShort = input.metadata.snapshotDigest ? input.metadata.snapshotDigest.slice(0, 16) : "OFICIAL";
+        lastPage.drawText(
+          `GODT Regional 3 · Proceso: ${input.metadata.processCode} · ${statusLabel} · Digest SHA-256: ${digestShort} · IPS: ${input.metadata.primaryIpsName}`,
+          {
+            x: 35,
+            y: 15,
+            size: 7,
+            font: fontRegular,
+            color: rgb(0.35, 0.42, 0.5),
+          },
+        );
+
+        // Atribución de firmas reales si existen
+        if (input.metadata.signatures && input.metadata.signatures.length > 0) {
+          let sigY = 60;
+          for (const sig of input.metadata.signatures) {
+            if (sig.status === "FIRMADO" || sig.signedAt) {
+              lastPage.drawText(
+                `[ATESTACIÓN FIRMADA] ${sig.fullName} (${sig.signerRole}) — ${new Date(sig.signedAt || input.metadata.generatedAt).toLocaleString("es-CO")}`,
+                {
+                  x: 35,
+                  y: sigY,
+                  size: 7.5,
+                  font: fontBold,
+                  color: rgb(0.08, 0.45, 0.35),
+                },
+              );
+              sigY += 12;
+            }
+          }
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        return Buffer.from(pdfBytes);
+      } catch (err) {
+        // En caso de incidencia cargando el PDF original, continuar con el motor vectorial de respaldo
+      }
+    }
+
+    // 2. Motor vectorial de respaldo (para Anexo 5 DOCX o formatos sin PDF original)
     const pdfDoc = await PDFDocument.create();
     const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const docCode = input.documentCode.toUpperCase();
     if (docCode.includes("ANEXO_1") || docCode === "ANEXO_01") {
       await this.renderAnexo1(pdfDoc, input, fontRegular, fontBold);
     } else if (docCode.includes("ANEXO_2") || docCode === "ANEXO_02") {
