@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   AddProcessInstitutionInput,
@@ -10,7 +11,10 @@ import {
   ProcessParticipant,
   UpdateDonationProcessInput,
 } from "../../domain/processes/donation-process";
-import { DonationProcessRepository } from "../../application/processes/donation-process.repository";
+import {
+  CreateProcessTransactionalInput,
+  DonationProcessRepository,
+} from "../../application/processes/donation-process.repository";
 
 @Injectable()
 export class PrismaDonationProcessRepository
@@ -75,6 +79,122 @@ export class PrismaDonationProcessRepository
     });
 
     return process as unknown as DonationProcess;
+  }
+
+  async createTransactional(
+    input: CreateProcessTransactionalInput,
+  ): Promise<DonationProcess> {
+    return this.prisma.$transaction(async (tx) => {
+      let donorId = input.donorId;
+
+      // 1. Crear DonorRecord provisional dentro de la transacción si aplica
+      if (!donorId && input.provisionalDonorInput) {
+        const newDonor = await tx.donorRecord.create({
+          data: {
+            rndCode: input.provisionalDonorInput.rndCode,
+            originatingIpsName: input.provisionalDonorInput.originatingIpsName,
+            clinicalService: input.provisionalDonorInput.clinicalService,
+            fullName: input.provisionalDonorInput.fullName,
+            documentNumber: input.provisionalDonorInput.documentNumber,
+            status: input.provisionalDonorInput.status ?? "EN_VALORACION",
+            bloodGroup: input.provisionalDonorInput.bloodGroup,
+            rhFactor: input.provisionalDonorInput.rhFactor,
+            createdById: input.openedById,
+          },
+        });
+        donorId = newDonor.id;
+      }
+
+      if (!donorId) {
+        throw new Error("donorId es requerido para abrir el proceso");
+      }
+
+      // 2. Crear DonationProcess dentro de la misma transacción
+      const process = await tx.donationProcess.create({
+        data: {
+          processCode: input.processCode,
+          donorId,
+          primaryIpsName: input.processInput.primaryIpsName,
+          packageVersionId: input.packageVersionId,
+          openedById: input.openedById,
+          notes: input.processInput.notes,
+          institutions: input.processInput.institutions?.length
+            ? {
+                create: input.processInput.institutions.map((inst) => ({
+                  institutionName: inst.institutionName,
+                  role: inst.role,
+                  notes: inst.notes,
+                })),
+              }
+            : undefined,
+          participants: input.processInput.participants?.length
+            ? {
+                create: input.processInput.participants.map((p) => ({
+                  fullName: p.fullName,
+                  role: p.role,
+                  documentType: p.documentType,
+                  documentNumber: p.documentNumber,
+                  professionalId: p.professionalId,
+                  institution: p.institution,
+                  relationshipToDonor: p.relationshipToDonor,
+                  phone: p.phone,
+                  email: p.email,
+                  notes: p.notes,
+                  systemUserId: p.systemUserId,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          donor: {
+            select: {
+              id: true,
+              rndCode: true,
+              fullName: true,
+              documentNumber: true,
+              originatingIpsName: true,
+              status: true,
+            },
+          },
+          institutions: true,
+          participants: true,
+        },
+      });
+
+      // 3. Crear las 23 posiciones documentales dentro de la misma transacción
+      if (input.positions && input.positions.length > 0) {
+        await tx.processDocument.createMany({
+          data: input.positions.map((pos) => ({
+            processId: process.id,
+            positionNumber: pos.positionNumber,
+            documentCode: pos.documentCode,
+            title: pos.title,
+            category: pos.category,
+            orderIndex: pos.orderIndex,
+            isMandatory: pos.isMandatory ?? true,
+            rules: (pos.rules as any) ?? Prisma.DbNull,
+            status: "PENDIENTE",
+            applicabilityStatus: pos.defaultApplicability ?? "APLICABLE",
+          })),
+        });
+      }
+
+      // 4. Registrar los eventos de auditoría dentro de la transacción
+      for (const event of input.auditEvents) {
+        await tx.auditEvent.create({
+          data: {
+            actorUserId: event.actorUserId,
+            action: event.action,
+            entityType: event.entityType,
+            entityId: event.entityType === "DONOR_RECORD" ? donorId : process.id,
+            correlationId: event.correlationId,
+            metadata: (event.metadata as Prisma.InputJsonValue) ?? Prisma.DbNull,
+          },
+        });
+      }
+
+      return process as unknown as DonationProcess;
+    });
   }
 
   async findById(id: string): Promise<DonationProcess | null> {

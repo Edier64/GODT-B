@@ -15,11 +15,11 @@ async function run() {
 
   const logStep = (step, title) => console.log(`\n▶ PASO ${step}: ${title}`);
 
-  // 1. Crear un donante nuevo
-  logStep(1, 'Crear un donante nuevo en censo');
+  // 1. Crear un donante nuevo en censo (con código RND sintético explícito para pruebas)
+  logStep(1, 'Crear un donante nuevo en censo (identificador sintético de prueba)');
   const uniqueId = Date.now().toString().slice(-6);
   const donorPayload = {
-    rndCode: `RND-INS-2026-${uniqueId}`,
+    rndCode: `TEST-SYNTHETIC-RND-${uniqueId}`,
     originatingIpsName: 'Hospital Universitario del Valle',
     clinicalService: 'Urgencias / Trauma',
     fullName: `Donante Auditoría Funcional ${uniqueId}`,

@@ -41,7 +41,7 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
 
     try {
       this.redisConnection = new Redis(redisUrl, {
-        maxRetriesPerRequest: isProduction ? 5 : 2,
+        maxRetriesPerRequest: null, // BullMQ exige estrictamente maxRetriesPerRequest: null
         lazyConnect: true,
         connectTimeout: 2000,
       });

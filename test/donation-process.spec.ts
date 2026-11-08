@@ -418,8 +418,8 @@ describe("DonationProcess Use Cases (Phase A)", () => {
           clinicalService: "UCI / Urgencias (Valoración preliminar)",
           fullName: "Donante en valoración preliminar",
           status: "EN_VALORACION",
-          rndCode: expect.stringMatching(/^PROV-RND-\d{4}-[A-F0-9]{6}$/),
-          documentNumber: expect.stringMatching(/^PROV-DOC-\d{4}-[A-F0-9]{6}$/),
+          rndCode: expect.stringMatching(/^PROV-RND-\d{4}-[A-F0-9]{32}$/),
+          documentNumber: expect.stringMatching(/^PROV-DOC-\d{4}-[A-F0-9]{32}$/),
         }),
         coordinatorUser.userId,
       );
@@ -430,7 +430,59 @@ describe("DonationProcess Use Cases (Phase A)", () => {
           metadata: expect.objectContaining({
             institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
             isProvisionalRnd: true,
+            entropyBits: 128,
           }),
+        }),
+      );
+    });
+
+    it("Ajustes finales G.1.2: createTransactional ejecuta atómicamente el donante provisional, proceso, 23 posiciones y auditoría", async () => {
+      const mockTransactionalRepo: any = {
+        ...mockRepository,
+        createTransactional: jest.fn().mockImplementation((input: any) => {
+          return Promise.resolve({
+            id: "proc-atomic-1",
+            processCode: input.processCode,
+            status: "EN_VALORACION",
+            primaryIpsName: input.processInput.primaryIpsName,
+            donorId: "donor-atomic-1",
+            openedAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }),
+      };
+
+      const useCase = new CreateDonationProcessUseCase(
+        mockTransactionalRepo,
+        mockDonorRepository as DonorRecordRepository,
+        mockAuditPort,
+      );
+
+      const process = await useCase.execute(
+        {
+          primaryIpsName: "Hospital Universitario del Valle",
+        },
+        coordinatorUser,
+      );
+
+      expect(process.id).toBe("proc-atomic-1");
+      expect(mockTransactionalRepo.createTransactional).toHaveBeenCalledWith(
+        expect.objectContaining({
+          processCode: expect.stringMatching(/^PROC-\d{4}-\d{4}$/),
+          provisionalDonorInput: expect.objectContaining({
+            rndCode: expect.stringMatching(/^PROV-RND-\d{4}-[A-F0-9]{32}$/),
+            documentNumber: expect.stringMatching(/^PROV-DOC-\d{4}-[A-F0-9]{32}$/),
+            status: "EN_VALORACION",
+          }),
+          positions: expect.arrayContaining([
+            expect.objectContaining({ positionNumber: 1, documentCode: "ANEXO_1" }),
+            expect.objectContaining({ positionNumber: 20, documentCode: "POS_NORMATIVA_20" }),
+            expect.objectContaining({ positionNumber: 23, documentCode: "POS_NORMATIVA_23" }),
+          ]),
+          auditEvents: expect.arrayContaining([
+            expect.objectContaining({ action: "DONOR_CREATED" }),
+            expect.objectContaining({ action: "PROCESS_OPENED" }),
+          ]),
         }),
       );
     });

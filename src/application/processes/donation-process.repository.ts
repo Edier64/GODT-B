@@ -8,12 +8,35 @@ import {
   ProcessParticipant,
   UpdateDonationProcessInput,
 } from "../../domain/processes/donation-process";
+import { CreateDonorRecordInput } from "../../domain/donors/donor-record";
+import { PackagePositionDefinition } from "../../domain/packages/process-package";
+
+export interface CreateProcessTransactionalInput {
+  processInput: CreateDonationProcessInput;
+  provisionalDonorInput?: CreateDonorRecordInput;
+  donorId?: string;
+  openedById: string;
+  processCode: string;
+  packageVersionId?: string;
+  positions: PackagePositionDefinition[];
+  auditEvents: Array<{
+    actorUserId: string;
+    action: string;
+    entityType: string;
+    correlationId: string;
+    metadata?: Record<string, unknown>;
+  }>;
+}
 
 export interface DonationProcessRepository {
   create(
     input: CreateDonationProcessInput & { donorId: string },
     openedById: string,
     processCode: string,
+  ): Promise<DonationProcess>;
+
+  createTransactional?(
+    input: CreateProcessTransactionalInput,
   ): Promise<DonationProcess>;
 
   findById(id: string): Promise<DonationProcess | null>;

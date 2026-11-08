@@ -228,3 +228,4 @@ GODT REGIONAL 3 — VALIDACIÓN FUNCIONAL PASO A PASO (AUDITORÍA G.1.2)
    - Las historias clínicas completas, registros de UCI y reportes quirúrgicos externos permanecen en estado `PENDING_HOMOLOGATION`. Se recomienda mantener la política actual de adjuntarlos como documentos fuente analizados vía OCR en lugar de intentar forzar plantillas dinámicas no estandarizadas.
 3. **Respaldo de Almacenamiento Local de Documentos:**
    - Los documentos fuente cargados residen en el volumen privado local. Se debe asegurar la ejecución periódica de las rutinas de backup criptográfico validadas en la Fase F.
+

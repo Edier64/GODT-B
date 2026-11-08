@@ -61,7 +61,6 @@ export class CreateDonationProcessUseCase {
 
     // Resolver el donante: existente o nuevo registro preliminar/provisional
     let resolvedDonorId = input.donorId?.trim();
-    let createdProvisionalDonorId: string | null = null;
     if (resolvedDonorId) {
       const donor = await this.donorRepository.findById(resolvedDonorId);
       if (!donor) {
@@ -69,59 +68,6 @@ export class CreateDonationProcessUseCase {
           "El donante especificado no existe",
         );
       }
-    } else {
-      // Crear un nuevo DonorRecord preliminar de forma limpia y consistente
-      // NOTA AUDITORÍA G.1.2: El RND oficial es emitido por el Instituto Nacional de Salud (INS).
-      // Los códigos provisionales generados internamente se prefijan con 'PROV-RND-' para evitar
-      // colisiones y marcar explícitamente la dependencia institucional pendiente.
-      const currentYear = new Date().getFullYear();
-      const randomSuffix = randomBytes(3).toString("hex").toUpperCase();
-      const provisionalRnd =
-        input.donor?.rndCode?.trim() ||
-        `PROV-RND-${currentYear}-${randomSuffix}`;
-      const originatingIps =
-        input.donor?.originatingIpsName?.trim() || primaryIpsName;
-      const clinicalService =
-        input.donor?.clinicalService?.trim() ||
-        "UCI / Urgencias (Valoración preliminar)";
-      const fullName =
-        input.donor?.fullName?.trim() || "Donante en valoración preliminar";
-      const documentNumber =
-        input.donor?.documentNumber?.trim() ||
-        `PROV-DOC-${currentYear}-${randomSuffix}`;
-
-      const newDonor = await this.donorRepository.create(
-        {
-          rndCode: provisionalRnd,
-          originatingIpsName: originatingIps,
-          clinicalService,
-          fullName,
-          documentNumber,
-          status: "EN_VALORACION",
-          bloodGroup: input.donor?.bloodGroup?.trim(),
-          rhFactor: input.donor?.rhFactor?.trim(),
-        },
-        user.userId,
-      );
-
-      createdProvisionalDonorId = newDonor.id;
-
-      await this.audit.record({
-        actorUserId: user.userId,
-        action: "DONOR_CREATED",
-        entityType: "DONOR_RECORD",
-        entityId: newDonor.id,
-        correlationId: newDonor.id,
-        metadata: {
-          source: "donation-process-bootstrap",
-          originatingIpsName: originatingIps,
-          isProvisionalRnd: !input.donor?.rndCode?.trim(),
-          isProvisionalDocument: !input.donor?.documentNumber?.trim(),
-          institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
-        },
-      });
-
-      resolvedDonorId = newDonor.id;
     }
 
     // Generar o validar código legible
@@ -158,45 +104,179 @@ export class CreateDonationProcessUseCase {
       }
     }
 
-    try {
-      const process = await this.repository.create(
-        {
-          ...input,
-          donorId: resolvedDonorId,
-          primaryIpsName,
+    // Bucle con reintentos controlados ante colisiones de unicidad en identificadores provisionales
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      // 128 bits de entropía criptográfica (16 bytes = 32 caracteres hexadecimales)
+      const randomSuffix = randomBytes(16).toString("hex").toUpperCase();
+      const provisionalRnd =
+        input.donor?.rndCode?.trim() ||
+        `PROV-RND-${currentYear}-${randomSuffix}`;
+      const originatingIps =
+        input.donor?.originatingIpsName?.trim() || primaryIpsName;
+      const clinicalService =
+        input.donor?.clinicalService?.trim() ||
+        "UCI / Urgencias (Valoración preliminar)";
+      const fullName =
+        input.donor?.fullName?.trim() || "Donante en valoración preliminar";
+      const documentNumber =
+        input.donor?.documentNumber?.trim() ||
+        `PROV-DOC-${currentYear}-${randomSuffix}`;
+
+      // 1. Ruta transaccional atómica de base de datos (Prisma $transaction)
+      if (this.repository.createTransactional) {
+        try {
+          const auditEvents = [];
+          if (!resolvedDonorId) {
+            auditEvents.push({
+              actorUserId: user.userId,
+              action: "DONOR_CREATED",
+              entityType: "DONOR_RECORD",
+              correlationId: `corr-donor-${randomSuffix}`,
+              metadata: {
+                source: "donation-process-bootstrap",
+                originatingIpsName: originatingIps,
+                isProvisionalRnd: !input.donor?.rndCode?.trim(),
+                isProvisionalDocument: !input.donor?.documentNumber?.trim(),
+                entropyBits: 128,
+                institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
+              },
+            });
+          }
+          auditEvents.push({
+            actorUserId: user.userId,
+            action: "PROCESS_OPENED",
+            entityType: "DONATION_PROCESS",
+            correlationId: `corr-proc-${randomSuffix}`,
+            metadata: {
+              processCode,
+              primaryIpsName,
+              packageVersionId,
+              totalPositions: positionsToCreate.length,
+            },
+          });
+
+          return await this.repository.createTransactional({
+            processInput: input,
+            provisionalDonorInput: !resolvedDonorId
+              ? {
+                  rndCode: provisionalRnd,
+                  originatingIpsName: originatingIps,
+                  clinicalService,
+                  fullName,
+                  documentNumber,
+                  status: "EN_VALORACION",
+                  bloodGroup: input.donor?.bloodGroup?.trim(),
+                  rhFactor: input.donor?.rhFactor?.trim(),
+                }
+              : undefined,
+            donorId: resolvedDonorId,
+            openedById: user.userId,
+            processCode,
+            packageVersionId,
+            positions: positionsToCreate,
+            auditEvents,
+          });
+        } catch (error: any) {
+          const isUniqueConflict =
+            error?.code === "P2002" ||
+            error?.message?.includes("Unique constraint") ||
+            error?.message?.includes("ya se encuentra registrado");
+          if (isUniqueConflict && attempt < 3 && !input.donor?.rndCode) {
+            continue; // Reintentar generando un nuevo identificador de 128 bits
+          }
+          throw error;
+        }
+      }
+
+      // 2. Ruta desacoplada para repositorios mock en pruebas unitarias
+      let createdProvisionalDonorId: string | null = null;
+      try {
+        let finalDonorId = resolvedDonorId;
+        if (!finalDonorId) {
+          const newDonor = await this.donorRepository.create(
+            {
+              rndCode: provisionalRnd,
+              originatingIpsName: originatingIps,
+              clinicalService,
+              fullName,
+              documentNumber,
+              status: "EN_VALORACION",
+              bloodGroup: input.donor?.bloodGroup?.trim(),
+              rhFactor: input.donor?.rhFactor?.trim(),
+            },
+            user.userId,
+          );
+          createdProvisionalDonorId = newDonor.id;
+          finalDonorId = newDonor.id;
+
+          await this.audit.record({
+            actorUserId: user.userId,
+            action: "DONOR_CREATED",
+            entityType: "DONOR_RECORD",
+            entityId: newDonor.id,
+            correlationId: newDonor.id,
+            metadata: {
+              source: "donation-process-bootstrap",
+              originatingIpsName: originatingIps,
+              isProvisionalRnd: !input.donor?.rndCode?.trim(),
+              isProvisionalDocument: !input.donor?.documentNumber?.trim(),
+              entropyBits: 128,
+              institutionalDependency: "HOMOLOGACION_INS_PENDIENTE",
+            },
+          });
+        }
+
+        const process = await this.repository.create(
+          {
+            ...input,
+            donorId: finalDonorId,
+            primaryIpsName,
+            processCode,
+            packageVersionId,
+          },
+          user.userId,
           processCode,
-          packageVersionId,
-        },
-        user.userId,
-        processCode,
-      );
+        );
 
-      // Crear las 23 posiciones de forma idempotente
-      if (this.packageRepository) {
-        await this.packageRepository.createProcessDocuments(process.id, positionsToCreate);
+        if (this.packageRepository) {
+          await this.packageRepository.createProcessDocuments(
+            process.id,
+            positionsToCreate,
+          );
+        }
+
+        await this.audit.record({
+          actorUserId: user.userId,
+          action: "PROCESS_OPENED",
+          entityType: "DONATION_PROCESS",
+          entityId: process.id,
+          correlationId: process.id,
+          metadata: {
+            processCode: process.processCode,
+            donorId: process.donorId,
+            primaryIpsName: process.primaryIpsName,
+            packageVersionId,
+            totalPositions: positionsToCreate.length,
+          },
+        });
+
+        return process;
+      } catch (error: any) {
+        if (createdProvisionalDonorId && this.donorRepository.delete) {
+          await this.donorRepository.delete(createdProvisionalDonorId).catch(() => {});
+        }
+        const isUniqueConflict =
+          error?.code === "P2002" ||
+          error?.message?.includes("Unique constraint");
+        if (isUniqueConflict && attempt < 3 && !input.donor?.rndCode) {
+          continue;
+        }
+        throw error;
       }
-
-      await this.audit.record({
-        actorUserId: user.userId,
-        action: "PROCESS_OPENED",
-        entityType: "DONATION_PROCESS",
-        entityId: process.id,
-        correlationId: process.id,
-        metadata: {
-          processCode: process.processCode,
-          donorId: process.donorId,
-          primaryIpsName: process.primaryIpsName,
-          packageVersionId,
-          totalPositions: positionsToCreate.length,
-        },
-      });
-
-      return process;
-    } catch (error) {
-      if (createdProvisionalDonorId && this.donorRepository.delete) {
-        await this.donorRepository.delete(createdProvisionalDonorId).catch(() => {});
-      }
-      throw error;
     }
+
+    throw new DonationProcessConflictError(
+      "No fue posible generar un identificador provisional único tras múltiples reintentos.",
+    );
   }
 }

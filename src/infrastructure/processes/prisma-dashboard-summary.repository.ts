@@ -137,3 +137,4 @@ export class PrismaDashboardSummaryRepository implements DashboardSummaryPort {
     };
   }
 }
+
