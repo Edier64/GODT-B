@@ -1,9 +1,20 @@
-const fs = require('fs');
-
 async function run() {
-  const tokens = JSON.parse(fs.readFileSync('scripts/dev-tokens.json', 'utf8'));
-  const token = tokens.users.coordinator.token;
-  const baseUrl = 'http://localhost:3000/api/v1';
+  const baseUrl = process.env.GODT_API_BASE_URL || 'http://localhost:3000/api/v1';
+  const email = process.env.GODT_VALIDATION_EMAIL;
+  const password = process.env.GODT_VALIDATION_PASSWORD;
+  if (!email || !password) {
+    throw new Error('Defina GODT_VALIDATION_EMAIL y GODT_VALIDATION_PASSWORD para ejecutar la validación funcional.');
+  }
+
+  const loginRes = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  if (!loginRes.ok) {
+    throw new Error(`Error autenticando validación funcional: HTTP ${loginRes.status}`);
+  }
+  const { accessToken: token } = await loginRes.json();
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`

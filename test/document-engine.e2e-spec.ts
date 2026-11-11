@@ -1,12 +1,13 @@
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PrismaClient, UserRole } from "@prisma/client";
-import { JwtService } from "@nestjs/jwt";
 import { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/infrastructure/prisma/prisma.service";
+import { SessionService } from "../src/presentation/auth/session.service";
+import { TokenService } from "../src/presentation/auth/token.service";
 
 const enabled = process.env.RUN_E2E_TESTS === "true";
 const describeE2e = enabled ? describe : describe.skip;
@@ -102,20 +103,33 @@ describeE2e("Document engine HTTP", () => {
     const address = app.getHttpServer().address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const jwt = app.get(JwtService);
+    const tokenService = app.get(TokenService);
+    const sessionService = app.get(SessionService);
     const admin = await createUser(UserRole.ADMIN);
     const ipsA = await createUser(UserRole.TECHNICIAN);
     const noScope = await createUser(UserRole.TECHNICIAN);
-    adminToken = await jwt.signAsync({ sub: admin.id, role: admin.role });
-    ipsAToken = await jwt.signAsync({
-      sub: ipsA.id,
-      role: ipsA.role,
-      institutionalIps: ["IPS A"],
+
+    const instA = await prisma.institutionEntity.upsert({
+      where: { name: "IPS A" },
+      update: { status: "ACTIVE" },
+      create: {
+        name: "IPS A",
+        normalizedName: "ips a",
+        city: "Cali",
+        status: "ACTIVE",
+      },
     });
-    noScopeToken = await jwt.signAsync({
-      sub: noScope.id,
-      role: noScope.role,
+    await prisma.userInstitutionScope.create({
+      data: { userId: ipsA.id, institutionId: instA.id, status: "APPROVED" },
     });
+
+    const adminSession = await sessionService.createSession(admin.id);
+    const ipsASession = await sessionService.createSession(ipsA.id);
+    const noScopeSession = await sessionService.createSession(noScope.id);
+
+    adminToken = (await tokenService.signAccessToken(admin.id, adminSession.session.id)).accessToken;
+    ipsAToken = (await tokenService.signAccessToken(ipsA.id, ipsASession.session.id)).accessToken;
+    noScopeToken = (await tokenService.signAccessToken(noScope.id, noScopeSession.session.id)).accessToken;
 
     const donorA = await prisma.donorRecord.create({
       data: {

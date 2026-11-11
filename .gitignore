@@ -52,3 +52,4 @@ test-output/
 .env.*
 !.env.example
 !.env.docker.example
+scripts/dev-tokens.json

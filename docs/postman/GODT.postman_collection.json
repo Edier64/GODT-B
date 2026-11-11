@@ -48,10 +48,10 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"coordinador@godt.gov.co\"\n}"
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/auth/login",
-            "description": "Autenticación institucional de Coordinador Operativo. Emite token JWT y aprovisiona el usuario dev si no existe."
+            "description": "Autenticación institucional de Coordinador Operativo mediante correo y contraseña verificados con Argon2id. Emite accessToken JWT (15 min) en body y cookie HttpOnly de refresh token."
           }
         },
         {
@@ -83,10 +83,51 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@godt.gov.co\"\n}"
+              "raw": "{\n  \"email\": \"admin@godt.gov.co\",\n  \"password\": \"{{adminPassword}}\"\n}"
             },
             "url": "{{baseUrl}}/api/v1/auth/login",
-            "description": "Autenticación institucional de Administrador con privilegios de gestión de plantillas y catálogo."
+            "description": "Autenticación institucional de Administrador previamente aprovisionado con npm run auth:provision-user."
+          }
+        },
+        {
+          "name": "Auth - Perfil Actual (/me)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/auth/me",
+            "description": "Consulta el perfil vigente, rol y ámbitos IPS activos directamente desde PostgreSQL."
+          }
+        },
+        {
+          "name": "Auth - Renovar Sesión (/refresh)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const data = pm.response.json();",
+                  "    if (data.accessToken) {",
+                  "        pm.environment.set('jwtToken', data.accessToken);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/refresh",
+            "description": "Rota el refresh token almacenado en la cookie HttpOnly godt_refresh_token y emite un nuevo accessToken."
+          }
+        },
+        {
+          "name": "Auth - Cerrar Sesión (/logout)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/logout",
+            "description": "Revoca la familia de sesión actual en PostgreSQL y limpia la cookie HttpOnly."
           }
         },
         {

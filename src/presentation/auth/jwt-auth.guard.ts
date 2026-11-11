@@ -4,14 +4,17 @@ import {
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
-import { JwtService } from "@nestjs/jwt";
 import { Request } from "express";
-import { UserRole } from "@prisma/client";
 import { AuthenticatedUser } from "./auth.types";
+import { SessionService } from "./session.service";
+import { TokenService } from "./token.service";
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly tokenService: TokenService,
+    private readonly sessionService: SessionService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context
@@ -22,39 +25,18 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException("Bearer token is required");
     }
 
-    try {
-      const payload = await this.jwtService.verifyAsync<{
-        sub?: string;
-        role?: UserRole;
-        institutionalIps?: unknown;
-      }>(authorization.slice("Bearer ".length));
-      if (
-        !payload.sub ||
-        !payload.role ||
-        !Object.values(UserRole).includes(payload.role)
-      ) {
-        throw new UnauthorizedException("JWT payload is invalid");
-      }
-      if (
-        payload.institutionalIps !== undefined &&
-        (!Array.isArray(payload.institutionalIps) ||
-          !payload.institutionalIps.every(
-            (value): value is string => typeof value === "string",
-          ))
-      ) {
-        throw new UnauthorizedException("JWT institutional scope is invalid");
-      }
-      request.user = {
-        userId: payload.sub,
-        role: payload.role,
-        institutionalIps: payload.institutionalIps,
-      };
-      return true;
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-      throw new UnauthorizedException("JWT token is invalid");
+    const rawToken = authorization.slice("Bearer ".length).trim();
+    if (!rawToken) {
+      throw new UnauthorizedException("Bearer token is required");
     }
+
+    const claims = await this.tokenService.verifyAccessToken(rawToken);
+    const activeUser = await this.sessionService.validateActiveSessionAndLoadUser(
+      claims.sid,
+      claims.sub,
+    );
+
+    request.user = activeUser;
+    return true;
   }
 }

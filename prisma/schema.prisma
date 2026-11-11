@@ -143,6 +143,8 @@ model SystemUser {
   custodyEventsVerified CustodyEvent[]            @relation("CustodyIntegrityVerifier")
   dossierExports        ProcessDossierExport[]    @relation("DossierExportRequester")
   institutionScopes     UserInstitutionScope[]    @relation("UserInstitutionScopes")
+  credential            UserCredential?
+  authSessions          AuthSession[]
 
   @@map("SYSTEM_USER")
 }
@@ -925,5 +927,41 @@ model UserInstitutionScope {
   @@unique([userId, institutionId])
   @@map("USER_INSTITUTION_SCOPE")
 }
+
+model UserCredential {
+  id                String     @id @default(uuid()) @db.Uuid
+  userId            String     @unique @map("user_id") @db.Uuid
+  passwordHash      String     @map("password_hash") @db.Text
+  passwordUpdatedAt DateTime   @default(now()) @map("password_updated_at") @db.Timestamptz(6)
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user              SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("USER_CREDENTIAL")
+}
+
+model AuthSession {
+  id               String     @id @default(uuid()) @db.Uuid
+  userId           String     @map("user_id") @db.Uuid
+  familyId         String     @map("family_id") @db.Uuid
+  refreshTokenHash String     @unique @map("refresh_token_hash") @db.VarChar(128)
+  replacedById     String?    @map("replaced_by_id") @db.Uuid
+  expiresAt        DateTime   @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime?  @map("revoked_at") @db.Timestamptz(6)
+  revocationReason String?    @map("revocation_reason") @db.VarChar(100)
+  ipAddress        String?    @map("ip_address") @db.VarChar(64)
+  userAgent        String?    @map("user_agent") @db.VarChar(512)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime   @default(now()) @map("last_used_at") @db.Timestamptz(6)
+
+  user             SystemUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("AUTH_SESSION")
+}
+
 
 

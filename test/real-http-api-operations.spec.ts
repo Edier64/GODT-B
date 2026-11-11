@@ -1,8 +1,11 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import * as argon2 from "argon2";
+import cookieParser from "cookie-parser";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/infrastructure/prisma/prisma.service";
+import { ARGON2ID_OPTIONS } from "../src/presentation/auth/password.service";
 import { seedOfficialTemplates } from "../src/application/document-engine/official-template-definitions";
 import { OFFICIAL_REGIONAL_3_POSITIONS } from "../src/domain/packages/process-package";
 
@@ -32,9 +35,11 @@ describe("Real HTTP API Operations Suite (20 Operaciones) â€” Fase D.3 ValidaciÃ
     // 1. Asegurar plantillas oficiales sembradas
     await seedOfficialTemplates(prisma);
 
-    // 2. Asegurar usuario de prueba coordinador en PostgreSQL
+    // 2. Asegurar usuario de prueba coordinador en PostgreSQL con credencial Argon2id y Ã¡mbito IPS
     testUserId = randomUUID();
     const testEmail = `coordinador.${runId}@godt.gov.co`;
+    const testPassword = `TestCoord_${runId}_Sec!`;
+    const passwordHash = await argon2.hash(testPassword, ARGON2ID_OPTIONS);
     await prisma.systemUser.create({
       data: {
         id: testUserId,
@@ -42,8 +47,31 @@ describe("Real HTTP API Operations Suite (20 Operaciones) â€” Fase D.3 ValidaciÃ
         fullName: "Dr. Coordinador Pruebas HTTP",
         role: "COORDINATOR",
         isActive: true,
+        credential: {
+          create: {
+            passwordHash,
+          },
+        },
       },
     });
+    const huv = await prisma.institutionEntity.upsert({
+      where: { name: "Hospital Universitario del Valle" },
+      update: { status: "ACTIVE" },
+      create: {
+        name: "Hospital Universitario del Valle",
+        normalizedName: "hospital universitario del valle",
+        city: "Cali",
+        status: "ACTIVE",
+      },
+    });
+    await prisma.userInstitutionScope.create({
+      data: {
+        userId: testUserId,
+        institutionId: huv.id,
+        status: "APPROVED",
+      },
+    });
+    (globalThis as any).__godtHttpTestPassword = testPassword;
 
     // 3. Crear Donante y Paquete Documental para pruebas
     const donor = await prisma.donorRecord.create({
@@ -103,6 +131,7 @@ describe("Real HTTP API Operations Suite (20 Operaciones) â€” Fase D.3 ValidaciÃ
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
     await app.listen(0);
 
@@ -127,7 +156,10 @@ describe("Real HTTP API Operations Suite (20 Operaciones) â€” Fase D.3 ValidaciÃ
     const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: `coordinador.${runId}@godt.gov.co` }),
+      body: JSON.stringify({
+        email: `coordinador.${runId}@godt.gov.co`,
+        password: (globalThis as any).__godtHttpTestPassword,
+      }),
     });
 
     expect([200, 201]).toContain(res.status);
