@@ -815,10 +815,10 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
   });
 
   describe("6. Durabilidad BullMQ, Fallback y Recuperación (Escenarios 16, 17, 18 y Durabilidad)", () => {
-    it("Escenario 16: debe permitir fallback en desarrollo cuando Redis no está disponible y ENABLE_IN_MEMORY_QUEUE_FALLBACK=true", async () => {
+    it("Escenario 16: debe permitir fallback en desarrollo cuando la cola BullMQ no está disponible y ENABLE_IN_MEMORY_QUEUE_FALLBACK=true", async () => {
       const devConfig = new ConfigService({
         NODE_ENV: "development",
-        REDIS_URL: "redis://invalid-host:9999",
+        BULLMQ_DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:59999/invalid",
         ENABLE_IN_MEMORY_QUEUE_FALLBACK: "true",
       });
       const devQueue = new BullmqDossierQueueService(devConfig, processExportService, prisma);
@@ -839,8 +839,11 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
       await prisma.processDossierExport.delete({ where: { id: testExp.id } });
     });
 
-    it("Escenario 17: debe rechazar estrictamente el fallback con DossierQueueUnavailableError en producción si Redis no está disponible", async () => {
-      const prodConfig = new ConfigService({ NODE_ENV: "production", REDIS_URL: "redis://invalid-host:9999" });
+    it("Escenario 17: debe rechazar estrictamente el fallback con DossierQueueUnavailableError en producción si la cola BullMQ no está disponible", async () => {
+      const prodConfig = new ConfigService({
+        NODE_ENV: "production",
+        BULLMQ_DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:59999/invalid",
+      });
       const prodQueue = new BullmqDossierQueueService(prodConfig, processExportService, prisma);
       await prodQueue.onModuleInit();
 
@@ -965,7 +968,7 @@ describe("Dossier Export Integration & Hardening Tests (Fase E & E.1)", () => {
     it("Escenario 21: Prohibición estricta de fallback en memoria en entorno STAGING", async () => {
       const stagingConfig = new ConfigService({
         NODE_ENV: "staging",
-        REDIS_URL: "redis://invalid-host:6379",
+        BULLMQ_DATABASE_URL: "postgresql://invalid:invalid@127.0.0.1:59999/invalid",
         ENABLE_IN_MEMORY_QUEUE_FALLBACK: "true", // Intento de activar fallback que debe ser ignorado
       });
 

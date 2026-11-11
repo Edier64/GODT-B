@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Inject, Module, OnModuleDestroy } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { AuthModule } from "../auth/auth.module";
@@ -19,6 +19,7 @@ import { OcrWorkflowUseCase } from "../../application/ocr/ocr-workflow.use-case"
 import { OcrController } from "./ocr.controller";
 import { LocalRulesExtractionProvider } from "../../application/ocr/local-rules-extraction.provider";
 import { DocumentUnderstandingService } from "../../application/ocr/document-understanding.service";
+import { createBullmqQueue } from "../../infrastructure/runtime/bullmq-backend";
 
 @Module({
   imports: [
@@ -57,14 +58,9 @@ import { DocumentUnderstandingService } from "../../application/ocr/document-und
       provide: OCR_QUEUE,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const url = new URL(config.get("REDIS_URL", "redis://localhost:6379"));
-        return new Queue(OCR_QUEUE_NAME, {
-          connection: {
-            host: url.hostname,
-            port: Number(url.port || 6379),
-            password: url.password || undefined,
-          },
-        });
+        const queue = createBullmqQueue(OCR_QUEUE_NAME, config);
+        queue.on("error", () => undefined);
+        return queue;
       },
     },
   ],
@@ -78,4 +74,10 @@ import { DocumentUnderstandingService } from "../../application/ocr/document-und
     LocalRulesExtractionProvider,
   ],
 })
-export class OcrModule {}
+export class OcrModule implements OnModuleDestroy {
+  constructor(@Inject(OCR_QUEUE) private readonly ocrQueue: Queue) {}
+
+  async onModuleDestroy(): Promise<void> {
+    await this.ocrQueue.close().catch(() => undefined);
+  }
+}
