@@ -8,7 +8,7 @@ export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
-  @ApiOperation({ summary: "Verifica la disponibilidad de PostgreSQL y Redis" })
+  @ApiOperation({ summary: "Verifica la disponibilidad de PostgreSQL, colas BullMQ y almacenamiento" })
   @ApiResponse({ status: 200, description: "Dependencias disponibles" })
   check() {
     return this.healthService.check();

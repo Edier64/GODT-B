@@ -1,0 +1,238 @@
+name: Backend CI/CD (godt-api & godt-worker)
+
+on:
+  pull_request:
+    branches:
+      - main
+      - feature/clinical-history-donor-intake-ocr
+      - feature/aca-docker-preparation
+  push:
+    branches:
+      - feature/clinical-history-donor-intake-ocr
+      - feature/aca-docker-preparation
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Ambiente destino (GitHub Environment)"
+        required: true
+        default: production
+        type: choice
+        options:
+          - staging
+          - production
+      push_images:
+        description: "Construir y publicar imágenes en Azure Container Registry"
+        required: true
+        default: true
+        type: boolean
+      run_migrations:
+        description: "Ejecutar migraciones Prisma mediante job migrator en Azure"
+        required: true
+        default: false
+        type: boolean
+      deploy_api:
+        description: "Desplegar nueva revisión de godt-api"
+        required: true
+        default: false
+        type: boolean
+      deploy_worker:
+        description: "Desplegar nueva revisión de godt-worker"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI — Build y Pruebas Unitarias
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias reproducibles
+        run: npm ci
+
+      - name: Generar Prisma Client
+        run: npx prisma generate
+
+      - name: Validar schema Prisma
+        run: npx prisma validate
+
+      - name: Compilar NestJS (API + Worker)
+        run: npm run build
+
+      - name: Ejecutar pruebas unitarias (sin DB externa ni OCR Gemini remoto)
+        run: >
+          npx jest
+          --runInBand
+          --forceExit
+          --testPathIgnorePatterns="integration-spec|-integration\.spec|e2e-spec|real-http-api-operations|gemini-ocr-integration|fase-d2-e2e|fase-g1-4-diligenced-pdf-preview|fase-g1-clinical-history-intake|fase-g1-ingestion-ocr-canonical"
+
+      - name: Verificar build Docker local (runtime + migrator) sin push
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build de validación runtime (sin publicar)
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runtime
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-and-push:
+    name: Build & Push a Azure Container Registry (OIDC)
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' && inputs.push_images == true
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    outputs:
+      image_tag: ${{ github.sha }}
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Validar variables OIDC y ACR configuradas
+        run: |
+          test -n "${{ vars.AZURE_CLIENT_ID }}" || (echo "Falta vars.AZURE_CLIENT_ID" && exit 1)
+          test -n "${{ vars.AZURE_TENANT_ID }}" || (echo "Falta vars.AZURE_TENANT_ID" && exit 1)
+          test -n "${{ vars.AZURE_SUBSCRIPTION_ID }}" || (echo "Falta vars.AZURE_SUBSCRIPTION_ID" && exit 1)
+          test -n "${{ vars.AZURE_ACR_NAME }}" || (echo "Falta vars.AZURE_ACR_NAME" && exit 1)
+          test -n "${{ vars.AZURE_ACR_LOGIN_SERVER }}" || (echo "Falta vars.AZURE_ACR_LOGIN_SERVER" && exit 1)
+
+      - name: Autenticación Azure vía OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login en Azure Container Registry
+        run: az acr login --name "${{ vars.AZURE_ACR_NAME }}"
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build y push imagen runtime (godt-backend)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runtime
+          push: true
+          tags: |
+            ${{ vars.AZURE_ACR_LOGIN_SERVER }}/godt-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build y push imagen migrator (godt-migrator)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: migrator
+          push: true
+          tags: |
+            ${{ vars.AZURE_ACR_LOGIN_SERVER }}/godt-migrator:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate:
+    name: Ejecutar migraciones Prisma y BullMQ (Job controlado)
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' && inputs.push_images == true && inputs.run_migrations == true
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    steps:
+      - name: Autenticación Azure vía OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Actualizar y ejecutar Container App Job de migraciones
+        run: |
+          test -n "${{ vars.AZURE_RESOURCE_GROUP }}" || (echo "Falta vars.AZURE_RESOURCE_GROUP" && exit 1)
+          test -n "${{ vars.ACA_MIGRATOR_JOB_NAME }}" || (echo "Falta vars.ACA_MIGRATOR_JOB_NAME" && exit 1)
+          az containerapp job update \
+            --name "${{ vars.ACA_MIGRATOR_JOB_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.AZURE_ACR_LOGIN_SERVER }}/godt-migrator:${{ needs.build-and-push.outputs.image_tag }}"
+          az containerapp job start \
+            --name "${{ vars.ACA_MIGRATOR_JOB_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+
+  deploy-api:
+    name: Desplegar godt-api (Ingress interno)
+    needs: [build-and-push, migrate]
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_api == true
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    steps:
+      - name: Autenticación Azure vía OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Actualizar revisión de godt-api en Azure Container Apps
+        run: |
+          test -n "${{ vars.AZURE_RESOURCE_GROUP }}" || (echo "Falta vars.AZURE_RESOURCE_GROUP" && exit 1)
+          test -n "${{ vars.ACA_API_APP_NAME }}" || (echo "Falta vars.ACA_API_APP_NAME" && exit 1)
+          az containerapp update \
+            --name "${{ vars.ACA_API_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.AZURE_ACR_LOGIN_SERVER }}/godt-backend:${{ needs.build-and-push.outputs.image_tag }}"
+
+  deploy-worker:
+    name: Desplegar godt-worker (Sin ingress)
+    needs: [build-and-push, migrate]
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_worker == true
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_environment }}
+    steps:
+      - name: Autenticación Azure vía OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Actualizar revisión de godt-worker en Azure Container Apps
+        run: |
+          test -n "${{ vars.AZURE_RESOURCE_GROUP }}" || (echo "Falta vars.AZURE_RESOURCE_GROUP" && exit 1)
+          test -n "${{ vars.ACA_WORKER_APP_NAME }}" || (echo "Falta vars.ACA_WORKER_APP_NAME" && exit 1)
+          az containerapp update \
+            --name "${{ vars.ACA_WORKER_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.AZURE_ACR_LOGIN_SERVER }}/godt-backend:${{ needs.build-and-push.outputs.image_tag }}"
+

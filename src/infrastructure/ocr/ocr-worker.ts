@@ -6,8 +6,7 @@ import {
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Job, Worker } from "bullmq";
-import { Queue } from "bullmq";
+import { Job, Queue, Worker } from "bullmq";
 import { Logger } from "@nestjs/common";
 import {
   FILE_STORAGE_PORT,
@@ -25,6 +24,11 @@ import {
 import { OCR_QUEUE } from "../../application/ocr/ocr.queue";
 import { PrismaService } from "../prisma/prisma.service";
 import { DocumentUnderstandingService } from "../../application/ocr/document-understanding.service";
+import {
+  areQueueWorkersEnabled,
+  resolveAppMode,
+} from "../runtime/app-mode";
+import { createBullmqWorker } from "../runtime/bullmq-backend";
 
 @Injectable()
 export class OcrWorker implements OnModuleInit, OnModuleDestroy {
@@ -41,9 +45,26 @@ export class OcrWorker implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    this.worker = new Worker(OCR_QUEUE_NAME, async (job) => this.process(job), {
-      connection: this.connection(),
-      concurrency: Number(this.config.get("OCR_CONCURRENCY", 1)),
+    if (!areQueueWorkersEnabled(this.config)) {
+      this.logger.log(
+        `Consumidor OcrWorker deshabilitado en modo APP_MODE=${resolveAppMode(this.config)} (solo productor activo).`,
+      );
+      return;
+    }
+
+    this.worker = createBullmqWorker<{ jobId: string }>(
+      OCR_QUEUE_NAME,
+      async (job) => this.process(job),
+      this.config,
+      { concurrency: Number(this.config.get("OCR_CONCURRENCY", 1)) },
+    );
+    this.worker.on("error", (err) => {
+      this.logger.error(`Error en worker OCR: ${err?.message ?? "error"}`);
+    });
+    this.worker.on("failed", (job, err) => {
+      this.logger.error(
+        `Job OCR ${job?.id ?? "desconocido"} falló: ${err?.message ?? "error"}`,
+      );
     });
     void this.requeuePersistedJobs().catch((error: unknown) => {
       this.logger.error(
@@ -129,15 +150,5 @@ export class OcrWorker implements OnModuleInit, OnModuleDestroy {
         );
       throw error;
     }
-  }
-  private connection() {
-    const url = new URL(
-      this.config.get<string>("REDIS_URL", "redis://localhost:6379"),
-    );
-    return {
-      host: url.hostname,
-      port: Number(url.port || 6379),
-      password: url.password || undefined,
-    };
   }
 }

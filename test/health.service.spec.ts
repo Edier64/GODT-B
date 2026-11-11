@@ -16,9 +16,12 @@ jest.mock("ioredis", () => ({
 }));
 
 describe("HealthService", () => {
-  it("reports healthy dependencies", async () => {
+  it("reports healthy dependencies in PostgreSQL BullMQ mode", async () => {
     const prisma = {
-      $queryRaw: jest.fn().mockResolvedValue([{ "?column?": 1 }]),
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ "?column?": 1 }])
+        .mockResolvedValueOnce([{ ready: true }]),
     };
     const module = await Test.createTestingModule({
       providers: [HealthService, { provide: PrismaService, useValue: prisma }],
@@ -28,6 +31,29 @@ describe("HealthService", () => {
     const result = await service.check();
 
     expect(result.status).toBe("ok");
-    expect(prisma.$queryRaw).toHaveBeenCalled();
+    expect(result.database).toBe("up");
+    expect(result.queue).toBe("up");
+    expect(result.queueBackend).toBe("postgres");
+    expect(result.redis).toBe("disabled");
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports degraded when BullMQ PostgreSQL schema is not migrated", async () => {
+    const prisma = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ "?column?": 1 }])
+        .mockResolvedValueOnce([{ ready: false }]),
+    };
+    const module = await Test.createTestingModule({
+      providers: [HealthService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+
+    const service = module.get(HealthService);
+    const result = await service.check();
+
+    expect(result.status).toBe("degraded");
+    expect(result.database).toBe("up");
+    expect(result.queue).toBe("down");
   });
 });

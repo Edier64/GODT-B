@@ -1,0 +1,181 @@
+# =============================================================================
+# GODT Regional 3 — Docker Compose Local (replica arquitectura Azure Container Apps)
+# Uso:
+#   cp .env.local.example .env.local
+#   docker compose -f docker-compose.local.yml --env-file .env.local up --build
+# =============================================================================
+
+networks:
+  godt-network:
+    driver: bridge
+
+volumes:
+  godt-postgres-data:
+  godt-storage:
+
+services:
+  # ---------------------------------------------------------------------------
+  # Infraestructura privada (sin puertos publicados al exterior)
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    networks:
+      - godt-network
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-godt}
+      POSTGRES_USER: ${POSTGRES_USER:-godt}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env.local}
+    volumes:
+      - godt-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-godt} -d ${POSTGRES_DB:-godt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Etapa controlada de migraciones Prisma + esquema BullMQ PostgreSQL
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    image: godt-migrator:local
+    restart: "no"
+    networks:
+      - godt-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${APP_NODE_ENV:-production}
+      APP_MODE: migrate
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL en .env.local}
+      BULLMQ_BACKEND: ${BULLMQ_BACKEND:-postgres}
+      BULLMQ_PG_SCHEMA: ${BULLMQ_PG_SCHEMA:-bullmq}
+
+  # ---------------------------------------------------------------------------
+  # godt-api — Backend HTTP NestJS (ingress interno, sin puertos externos)
+  # ---------------------------------------------------------------------------
+  godt-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: godt-backend:local
+    restart: unless-stopped
+    networks:
+      - godt-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${APP_NODE_ENV:-production}
+      APP_MODE: api
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL en .env.local}
+      BULLMQ_BACKEND: ${BULLMQ_BACKEND:-postgres}
+      BULLMQ_PG_SCHEMA: ${BULLMQ_PG_SCHEMA:-bullmq}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET (>=32 chars) en .env.local}
+      JWT_ISSUER: ${JWT_ISSUER:-godt-backend}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-godt-frontend}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
+      REFRESH_COOKIE_NAME: ${REFRESH_COOKIE_NAME:-godt_refresh_token}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-strict}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_BASE_PATH: /app/storage
+      LOCAL_STORAGE_PATH: /app/storage
+      DOCUMENT_STORAGE_MAX_BYTES: ${DOCUMENT_STORAGE_MAX_BYTES:-20971520}
+      AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-godt-documents}
+      OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - godt-storage:/app/storage
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # godt-worker — Worker BullMQ sin servidor HTTP (OCR + Dossier exports)
+  # ---------------------------------------------------------------------------
+  godt-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: godt-backend:local
+    restart: unless-stopped
+    networks:
+      - godt-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${APP_NODE_ENV:-production}
+      APP_MODE: worker
+      INSTANCE_ID: ${INSTANCE_ID:-godt-worker-local}
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL en .env.local}
+      BULLMQ_BACKEND: ${BULLMQ_BACKEND:-postgres}
+      BULLMQ_PG_SCHEMA: ${BULLMQ_PG_SCHEMA:-bullmq}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_BASE_PATH: /app/storage
+      LOCAL_STORAGE_PATH: /app/storage
+      DOCUMENT_STORAGE_MAX_BYTES: ${DOCUMENT_STORAGE_MAX_BYTES:-20971520}
+      AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-godt-documents}
+      OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+      OCR_CONCURRENCY: ${OCR_CONCURRENCY:-1}
+      DOSSIER_CONCURRENCY: ${DOSSIER_CONCURRENCY:-2}
+      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - godt-storage:/app/storage
+
+  # ---------------------------------------------------------------------------
+  # godt-gateway — Único punto de entrada HTTP (Vue 3 + Nginx reverse proxy)
+  # ---------------------------------------------------------------------------
+  godt-gateway:
+    build:
+      context: ../../Frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+        VITE_ENVIRONMENT: ${APP_NODE_ENV:-production}
+    image: godt-gateway:local
+    restart: unless-stopped
+    networks:
+      - godt-network
+    depends_on:
+      godt-api:
+        condition: service_healthy
+    environment:
+      API_UPSTREAM: http://godt-api:3000
+      API_HOST_HEADER: "$$http_host"
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

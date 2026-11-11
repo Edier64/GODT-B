@@ -7,6 +7,12 @@ import { ProcessDossierExportService } from "../../application/dossier/process-d
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
 import { DossierQueueUnavailableError } from "../../domain/dossier/dossier.types";
 import { PrismaService } from "../prisma/prisma.service";
+import { areQueueWorkersEnabled, resolveAppMode } from "../runtime/app-mode";
+import {
+  createBullmqQueue,
+  createBullmqWorker,
+  resolveBullmqBackend,
+} from "../runtime/bullmq-backend";
 
 export interface DossierJobData {
   exportId: string;
@@ -20,7 +26,7 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
   private queue: Queue | null = null;
   private worker: Worker | null = null;
   private redisConnection: Redis | null = null;
-  private isRedisAvailable = false;
+  private isQueueAvailable = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -37,27 +43,38 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
   async onModuleInit() {
     const nodeEnv = this.config.get<string>("NODE_ENV", "development");
     const isProduction = nodeEnv === "production";
-    const redisUrl = this.config.get<string>("REDIS_URL", "redis://localhost:6379");
+    const backend = resolveBullmqBackend(this.config);
 
     try {
-      this.redisConnection = new Redis(redisUrl, {
-        maxRetriesPerRequest: null, // BullMQ exige estrictamente maxRetriesPerRequest: null
-        lazyConnect: true,
-        connectTimeout: 2000,
-      });
+      if (backend === "redis") {
+        const redisUrl = this.config.get<string>("REDIS_URL", "redis://localhost:6379");
+        this.redisConnection = new Redis(redisUrl, {
+          maxRetriesPerRequest: null, // BullMQ exige estrictamente maxRetriesPerRequest: null
+          lazyConnect: true,
+          connectTimeout: 2000,
+        });
 
-      await this.redisConnection.connect();
-      await this.redisConnection.ping();
-      this.isRedisAvailable = true;
+        await this.redisConnection.connect();
+        await this.redisConnection.ping();
 
-      // Crear Queue y Worker de BullMQ con persistencia y concurrencia controlada
-      this.queue = new Queue("dossier-exports", {
-        connection: this.redisConnection,
-      });
+        this.queue = new Queue("dossier-exports", {
+          connection: this.redisConnection,
+        });
+      } else {
+        this.queue = createBullmqQueue("dossier-exports", this.config, {
+          connectionTimeoutMillis: 2500,
+        });
+        this.queue.on("error", (err) => {
+          this.logger.warn(`Error en conexión BullMQ (${backend}): ${err?.message ?? "error"}`);
+        });
+        await this.queue.waitUntilReady();
+      }
 
-      this.worker = new Worker(
-        "dossier-exports",
-        async (job: Job<DossierJobData>) => {
+      this.isQueueAvailable = true;
+
+      const workersEnabled = areQueueWorkersEnabled(this.config);
+      if (workersEnabled) {
+        const processorFn = async (job: Job<DossierJobData>) => {
           this.logger.log(
             `Procesando trabajo BullMQ: ${job.id} (Export ID: ${job.data.exportId}, Worker: ${this.workerInstanceId})`,
           );
@@ -66,22 +83,51 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
             job.data.user,
             this.workerInstanceId,
           );
-        },
-        {
-          connection: this.redisConnection,
-          concurrency: 2,
-        },
-      );
+        };
+        const concurrency = Number(this.config.get("DOSSIER_CONCURRENCY", 2));
 
-      this.worker.on("failed", (job, err) => {
-        this.logger.error(`Trabajo BullMQ ${job?.id} falló: ${err?.message}`);
-      });
+        this.worker =
+          backend === "redis" && this.redisConnection
+            ? new Worker("dossier-exports", processorFn, {
+                connection: this.redisConnection,
+                concurrency,
+              })
+            : createBullmqWorker<DossierJobData>(
+                "dossier-exports",
+                processorFn,
+                this.config,
+                { concurrency, connectionTimeoutMillis: 2500 },
+              );
 
-      this.logger.log(
-        `BullMQ Dossier Queue & Worker (${this.workerInstanceId}) inicializados exitosamente.`,
-      );
+        this.worker.on("error", (err) => {
+          this.logger.error(`Error en worker dossier BullMQ: ${err?.message ?? "error"}`);
+        });
+        this.worker.on("failed", (job, err) => {
+          this.logger.error(`Trabajo BullMQ ${job?.id} falló: ${err?.message}`);
+        });
+
+        if (backend === "postgres") {
+          await this.worker.waitUntilReady();
+        }
+
+        this.logger.log(
+          `BullMQ Dossier Queue & Worker (${this.workerInstanceId}, backend: ${backend}) inicializados exitosamente.`,
+        );
+      } else {
+        this.logger.log(
+          `BullMQ Dossier Queue (solo productor, backend: ${backend}) inicializada en modo APP_MODE=${resolveAppMode(this.config)}. Consumidor deshabilitado.`,
+        );
+      }
     } catch (err: any) {
-      this.isRedisAvailable = false;
+      this.isQueueAvailable = false;
+      if (this.worker) {
+        await this.worker.close().catch(() => undefined);
+        this.worker = null;
+      }
+      if (this.queue) {
+        await this.queue.close().catch(() => undefined);
+        this.queue = null;
+      }
       if (this.redisConnection) {
         try {
           this.redisConnection.disconnect();
@@ -91,17 +137,19 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
 
       if (isProduction) {
         this.logger.error(
-          `[CRITICAL] Redis no disponible en PRODUCCIÓN (${err?.message}). BullMQ no pudo iniciar.`,
+          `[CRITICAL] Backend BullMQ (${backend}) no disponible en PRODUCCIÓN (${err?.message}). BullMQ no pudo iniciar.`,
         );
       } else {
         this.logger.warn(
-          `[DEV/TEST ONLY] Redis no disponible para BullMQ (${err?.message}). Modo degradado condicionado por ENABLE_IN_MEMORY_QUEUE_FALLBACK.`,
+          `[DEV/TEST ONLY] Backend BullMQ (${backend}) no disponible (${err?.message}). Modo degradado condicionado por ENABLE_IN_MEMORY_QUEUE_FALLBACK.`,
         );
       }
     }
 
-    // Ejecutar recuperación segura de trabajos huérfanos / interrumpidos
-    await this.recoverOrphanExports();
+    // Ejecutar recuperación segura de trabajos huérfanos solo en instancias con consumidor activo
+    if (areQueueWorkersEnabled(this.config)) {
+      await this.recoverOrphanExports();
+    }
   }
 
   async onModuleDestroy() {
@@ -125,7 +173,7 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
       this.config.get<string>("ENABLE_IN_MEMORY_QUEUE_FALLBACK") === "true";
     const allowFallback = isSafeDevOrTest && enableFallbackConfig;
 
-    if (this.isRedisAvailable && this.queue) {
+    if (this.isQueueAvailable && this.queue) {
       try {
         await this.queue.add(
           "generate-dossier",
@@ -146,7 +194,7 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
             `Error al encolar en BullMQ (entorno: ${rawEnv}, fallback permitido: ${allowFallback}) para exportación ${exportId}: ${err?.message}`,
           );
           throw new DossierQueueUnavailableError(
-            `Fallo al encolar en BullMQ: ${err?.message}. En entornos ${rawEnv || "no identificados"} no se permite procesamiento volátil sin Redis.`,
+            `Fallo al encolar en BullMQ: ${err?.message}. En entornos ${rawEnv || "no identificados"} no se permite procesamiento volátil sin cola persistente.`,
           );
         }
         this.logger.warn(
@@ -158,10 +206,10 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
     // Comprobación estricta de entorno para fallback (seguro por defecto)
     if (!allowFallback) {
       this.logger.error(
-        `[CRITICAL] Intento de encolamiento sin Redis/BullMQ en entorno no autorizado (NODE_ENV=${rawEnv}, ENABLE_IN_MEMORY_QUEUE_FALLBACK=${enableFallbackConfig}) para exportación ${exportId}.`,
+        `[CRITICAL] Intento de encolamiento sin BullMQ persistente en entorno no autorizado (NODE_ENV=${rawEnv}, ENABLE_IN_MEMORY_QUEUE_FALLBACK=${enableFallbackConfig}) para exportación ${exportId}.`,
       );
       throw new DossierQueueUnavailableError(
-        `El servicio persistente de colas (Redis/BullMQ) no se encuentra disponible. El modo fallback en memoria está estrictamente deshabilitado en este entorno (NODE_ENV=${rawEnv || "indefinido"}).`,
+        `El servicio persistente de colas BullMQ no se encuentra disponible. El modo fallback en memoria está estrictamente deshabilitado en este entorno (NODE_ENV=${rawEnv || "indefinido"}).`,
       );
     }
 
@@ -198,8 +246,8 @@ export class BullmqDossierQueueService implements OnModuleInit, OnModuleDestroy 
       const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutos
 
       for (const exp of processingExports) {
-        // 1. Si BullMQ está disponible, consultar estado del job en Redis
-        if (this.queue && this.isRedisAvailable) {
+        // 1. Si BullMQ está disponible, consultar estado del job en el backend activo
+        if (this.queue && this.isQueueAvailable) {
           try {
             const job = await this.queue.getJob(`dossier-export-${exp.id}`);
             if (job) {

@@ -40,7 +40,20 @@ async function bootstrap(): Promise<void> {
   const logger = new Logger("Bootstrap");
   validateCriticalEnvironment(logger);
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger:
+      (process.env.NODE_ENV || "").trim().toLowerCase() === "production"
+        ? ["log", "warn", "error"]
+        : ["log", "warn", "error", "debug", "verbose"],
+  });
+
+  if ((process.env.TRUST_PROXY || "false").trim().toLowerCase() === "true") {
+    const httpAdapter = app.getHttpAdapter()?.getInstance?.();
+    if (httpAdapter && typeof httpAdapter.set === "function") {
+      httpAdapter.set("trust proxy", 1);
+    }
+  }
+
   app.use(helmet());
   app.use(cookieParser());
   app.enableShutdownHooks();
