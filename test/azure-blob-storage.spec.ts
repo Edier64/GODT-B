@@ -47,9 +47,11 @@ jest.mock("@azure/storage-blob", () => {
 describe("AzureBlobStorageAdapter", () => {
   const createMockContainer = () => {
     const store = new Map<string, Buffer>();
+    const metadata = new Map<string, Record<string, string> | undefined>();
     const getBlockBlobClient = jest.fn((key: string) => ({
-      uploadData: jest.fn(async (buf: Buffer) => {
+      uploadData: jest.fn(async (buf: Buffer, options?: { metadata?: Record<string, string> }) => {
         store.set(key, Buffer.from(buf));
+        metadata.set(key, options?.metadata);
       }),
       downloadToBuffer: jest.fn(async () => {
         const found = store.get(key);
@@ -72,11 +74,12 @@ describe("AzureBlobStorageAdapter", () => {
         exists: jest.fn().mockResolvedValue(true),
       },
       store,
+      metadata,
     };
   };
 
   it("preserva SHA-256, clave esperada, put/get/exists/remove", async () => {
-    const { container } = createMockContainer();
+    const { container, metadata } = createMockContainer();
     const config = new ConfigService({
       AZURE_STORAGE_CONTAINER: "godt-documents",
       DOCUMENT_STORAGE_MAX_BYTES: 2048,
@@ -98,6 +101,10 @@ describe("AzureBlobStorageAdapter", () => {
     expect(stored.storageKey).toMatch(
       /^donations\/proc-123\/sources\/doc-456\/original\/[0-9a-f-]+\.pdf$/,
     );
+    expect(metadata.get(stored.storageKey)).toEqual({
+      sha256: expectedSha,
+      source_document_id: "doc-456",
+    });
     expect(await adapter.exists(stored.storageKey)).toBe(true);
     expect(await adapter.get(stored.storageKey)).toEqual(payload);
 

@@ -1,0 +1,17 @@
+{
+  "Name": "godt-clinical-blob-writer",
+  "Description": "Read and write blobs in the GODT clinical-documents container without delete, move, or access to other containers.",
+  "Actions": [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/read"
+  ],
+  "NotActions": [],
+  "DataActions": [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action"
+  ],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/bce68201-72d6-452a-8aa9-31b15d163096"
+  ]
+}

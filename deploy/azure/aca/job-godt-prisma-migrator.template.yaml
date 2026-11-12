@@ -1,0 +1,37 @@
+name: job-godt-prisma-migrator
+type: Microsoft.App/jobs
+location: northcentralus
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-migrator: {}
+properties:
+  environmentId: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.App/managedEnvironments/cae-godt-demo-ncus
+  configuration:
+    triggerType: Manual
+    replicaTimeout: 1800
+    replicaRetryLimit: 0
+    registries:
+      - server: acrgodtdemoncus01.azurecr.io
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-migrator
+    secrets:
+      - name: database-url
+        value: __SET_SECURELY_AT_DEPLOYMENT__
+  template:
+    containers:
+      - name: prisma-migrator
+        image: acrgodtdemoncus01.azurecr.io/godt-migrator:__IMAGE_TAG_AFTER_COMMIT__
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: APP_MODE
+            value: migrate
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: BULLMQ_BACKEND
+            value: postgres
+          - name: BULLMQ_PG_SCHEMA
+            value: bullmq

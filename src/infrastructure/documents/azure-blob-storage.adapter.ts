@@ -120,6 +120,9 @@ export class AzureBlobStorageAdapter implements FileStoragePort {
       },
       metadata: {
         sha256: sha256Hash,
+        ...(input.sourceDocumentId
+          ? { source_document_id: input.sourceDocumentId }
+          : {}),
       },
     });
 

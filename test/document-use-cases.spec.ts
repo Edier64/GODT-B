@@ -1,5 +1,6 @@
 import { UploadSourceDocumentUseCase } from "../src/application/documents/upload-source-document.use-case";
 import { DocumentAccessDeniedError } from "../src/application/documents/document-errors";
+import { Logger } from "@nestjs/common";
 
 describe("UploadSourceDocumentUseCase", () => {
   const actor = {
@@ -18,6 +19,7 @@ describe("UploadSourceDocumentUseCase", () => {
         storageKey: "document-1.pdf",
         sha256Hash: "a".repeat(64),
       }),
+      remove: jest.fn(),
     };
     const prisma = {
       donorRecord: {
@@ -91,5 +93,31 @@ describe("UploadSourceDocumentUseCase", () => {
         actor: { ...actor, institutionalIps: ["IPS-2"] },
       }),
     ).rejects.toThrow(DocumentAccessDeniedError);
+  });
+
+  it("keeps and logs an identifiable orphan candidate when database persistence fails", async () => {
+    const { useCase, repository, storage } = createUseCase();
+    const failure = new Error("database unavailable");
+    repository.create.mockRejectedValue(failure);
+    const logError = jest.spyOn(Logger.prototype, "error").mockImplementation();
+
+    await expect(
+      useCase.execute({
+        donorId: "donor-1",
+        uploadedById: actor.userId,
+        originalFilename: "synthetic.pdf",
+        declaredMimeType: "application/pdf",
+        buffer: Buffer.from("%PDF-1.7 synthetic"),
+        documentCategory: "SYNTHETIC",
+        actor,
+      }),
+    ).rejects.toThrow(failure);
+
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(
+      expect.stringContaining('"event":"source_document_persistence_failed"'),
+    );
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining('"storageKey":"document-1.pdf"'));
+    logError.mockRestore();
   });
 });

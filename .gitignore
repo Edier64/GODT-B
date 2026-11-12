@@ -33,6 +33,7 @@ lerna-debug.log*
 /docker/pgadmin/
 /backups/
 /storage/
+*.dump
 
 # Documentos clínicos y datos sensibles
 **/historias-clinicas-reales/

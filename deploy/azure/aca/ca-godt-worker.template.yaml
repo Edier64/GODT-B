@@ -1,0 +1,52 @@
+name: ca-godt-worker
+type: Microsoft.App/containerApps
+location: northcentralus
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-worker: {}
+properties:
+  managedEnvironmentId: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.App/managedEnvironments/cae-godt-demo-ncus
+  configuration:
+    activeRevisionsMode: Single
+    registries:
+      - server: acrgodtdemoncus01.azurecr.io
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-worker
+    secrets:
+      - name: database-url
+        value: __SET_SECURELY_AT_DEPLOYMENT__
+  template:
+    containers:
+      - name: worker
+        image: acrgodtdemoncus01.azurecr.io/godt-worker:__IMAGE_TAG_AFTER_COMMIT__
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: APP_MODE
+            value: worker
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: BULLMQ_BACKEND
+            value: postgres
+          - name: BULLMQ_PG_SCHEMA
+            value: bullmq
+          - name: INSTANCE_ID
+            value: ca-godt-worker
+          - name: STORAGE_PROVIDER
+            value: azure
+          - name: AZURE_STORAGE_ACCOUNT_URL
+            value: https://godtdemostgncus01.blob.core.windows.net
+          - name: AZURE_STORAGE_CONTAINER
+            value: clinical-documents
+          - name: OCR_PROVIDER
+            value: tesseract
+          - name: OCR_CONCURRENCY
+            value: "1"
+          - name: DOSSIER_CONCURRENCY
+            value: "2"
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

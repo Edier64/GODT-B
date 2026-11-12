@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { SourceDocument } from "@prisma/client";
 import { createHash, randomUUID } from "crypto";
 import AdmZip from "adm-zip";
@@ -41,6 +41,8 @@ export interface UploadSourceDocumentInput {
 
 @Injectable()
 export class UploadSourceDocumentUseCase {
+  private readonly logger = new Logger(UploadSourceDocumentUseCase.name);
+
   constructor(
     @Inject(DOCUMENT_REPOSITORY) private readonly documents: DocumentRepository,
     @Inject(FILE_STORAGE_PORT) private readonly storage: FileStoragePort,
@@ -129,7 +131,19 @@ export class UploadSourceDocumentUseCase {
         sha256Hash: stored.sha256Hash,
       });
     } catch (error) {
-      await this.storage.remove(stored.storageKey);
+      // No eliminar el blob como compensación: la identidad de producción no
+      // tiene permiso delete sobre documentos clínicos. El blob conserva
+      // metadata de correlación para reconciliarlo posteriormente contra
+      // SOURCE_DOCUMENT sin exponer contenido clínico en logs.
+      this.logger.error(
+        JSON.stringify({
+          event: "source_document_persistence_failed",
+          sourceDocumentId,
+          storageKey: stored.storageKey,
+          sha256Hash: stored.sha256Hash,
+          persistenceError: error instanceof Error ? error.message : String(error),
+        }),
+      );
       throw error;
     }
   }
