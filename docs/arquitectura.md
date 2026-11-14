@@ -179,8 +179,8 @@ flowchart TB
 
 ## 8. Evidencia técnica del repositorio
 
-- Frontend: ../Frontend/package.json, ../Frontend/Dockerfile, ../Frontend/docker/nginx.conf y ../Frontend/vite.config.ts.
-- Backend: package.json, Dockerfile, docker-compose.local.yml, prisma/schema.prisma y src/app.module.ts.
+- Frontend: [package.json](https://github.com/Edier64/GODT-Frontend/blob/main/package.json), [Dockerfile](https://github.com/Edier64/GODT-Frontend/blob/main/Dockerfile), [docker/nginx.conf](https://github.com/Edier64/GODT-Frontend/blob/main/docker/nginx.conf) y [vite.config.ts](https://github.com/Edier64/GODT-Frontend/blob/main/vite.config.ts).
+- Backend: [package.json](../package.json), [Dockerfile](../Dockerfile), [docker-compose.local.yml](../docker-compose.local.yml), [prisma/schema.prisma](../prisma/schema.prisma) y [src/app.module.ts](../src/app.module.ts).
 - Colas: src/infrastructure/runtime/bullmq-backend.ts y deploy/azure/README.md.
 - OCR: src/application/ocr/document-understanding.service.ts, src/infrastructure/ocr/gemini-ocr.adapter.ts, src/infrastructure/ocr/tesseract-ocr.adapter.ts y src/infrastructure/ocr/ocr-worker.ts.
 - Almacenamiento: src/infrastructure/documents/storage.module.ts, azure-blob-storage.adapter.ts y r2-storage.adapter.ts.
