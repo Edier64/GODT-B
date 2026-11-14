@@ -250,3 +250,9 @@ El repositorio está preparado para despliegue en **Azure Container Apps (ACA)**
   - Target `migrator`: contenedor especializado para ejecutar migraciones Prisma y BullMQ en un Container App Job previo al despliegue.
 - **Almacenamiento Cloud:** Integración con **Azure Blob Storage** privado usando autenticación nativa por **Managed Identity** (`DefaultAzureCredential`).
 - **Guía completa de despliegue:** Consulte [deploy/azure/README.md](./deploy/azure/README.md) para detalles de arquitectura cloud, costos en Azure for Students y scripts de aprovisionamiento con Azure CLI.
+
+---
+
+## 7. Documentación del repositorio
+
+Consulte el [índice de documentación](./docs/README.md) para acceder a arquitectura, requisitos, ADR, contratos y documentos históricos organizados por Sprint.
