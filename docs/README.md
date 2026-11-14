@@ -25,7 +25,7 @@
 | [documents/](./documents/) | Motor documental, plantillas, dependencias, formularios, campos, PDF y ciclo de vida. |
 | [ocr/](./ocr/) | Diseño del flujo de ingesta y OCR asistido. |
 | [api/](./api/) | Contrato documental, guía Postman, colección y ambiente. |
-| [deployment/](./deployment/) | Guías de despliegue e infraestructura. |
+| [Despliegue Azure Container Apps](./deployment/azure-container-apps.md) | Arquitectura cloud, recursos y procedimiento de despliegue. |
 | [audits/](./audits/) | Informes de Fases D, E, F, G1 y notas de correcciones técnicas. |
 
 ## Histórico de sprints
