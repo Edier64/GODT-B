@@ -89,6 +89,11 @@ jobs:
           --runInBand
           --forceExit
           --testPathIgnorePatterns="integration-spec|-integration\\.spec|e2e-spec|real-http-api-operations|session-3-api|gemini-ocr-integration|fase-d2-e2e|fase-g1-4-diligenced-pdf-preview|fase-g1-clinical-history-intake|fase-g1-ingestion-ocr-canonical|all-19-formats-fidelity|pdf-visual-alignment|anexo-5-docx-robustness|institutional-document"
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-only-test-secret-not-valid-outside-this-run
+          GEMINI_API_KEY: ci-placeholder-not-a-real-key
+          AI_EXTERNAL_PROVIDER_ENABLED: "false"
 
       - name: Ejecutar pruebas HTTP de API (sin base de datos externa)
         run: npx jest test/session-3-api.spec.ts --runInBand --forceExit
