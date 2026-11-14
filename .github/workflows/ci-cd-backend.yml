@@ -8,6 +8,7 @@ on:
       - feature/aca-docker-preparation
   push:
     branches:
+      - main
       - feature/clinical-history-donor-intake-ocr
       - feature/aca-docker-preparation
   workflow_dispatch:
