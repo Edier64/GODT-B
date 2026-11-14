@@ -25,7 +25,7 @@
 | [documents/](./documents/) | Motor documental, plantillas, dependencias, formularios, campos, PDF y ciclo de vida. |
 | [ocr/](./ocr/) | Diseño del flujo de ingesta y OCR asistido. |
 | [api/](./api/) | Contrato documental, guía Postman, colección y ambiente. |
-| [Despliegue Azure Container Apps](./deployment/azure-container-apps.md) | Arquitectura cloud, recursos y procedimiento de despliegue. |
+| [Despliegue Azure Container Apps](./deployment/azure-container-apps.md) | Arquitectura cloud, recursos y procedimiento de despliegue. |\n| [Documentos institucionales en Docker local](./deployment/documentos-institucionales-docker-local.md) | Montaje privado de formatos originales como volumen de solo lectura. |
 | [audits/](./audits/) | Informes de Fases D, E, F, G1 y notas de correcciones técnicas. |
 
 ## Pruebas y calidad
