@@ -1,3 +1,11 @@
+jest.mock("../src/infrastructure/runtime/bullmq-backend", () => ({
+  ...jest.requireActual("../src/infrastructure/runtime/bullmq-backend"),
+  createBullmqQueue: jest.fn(() => ({
+    on: jest.fn().mockReturnThis(),
+    close: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 import { Test, TestingModule } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { IntakeDonorFromClinicalHistoryUseCase } from "../src/application/processes/intake-donor-from-clinical-history.use-case";
