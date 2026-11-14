@@ -70,12 +70,12 @@ COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copiar artefactos compilados (dist/main.js y dist/worker.js)
 COPY --from=build /app/dist ./dist
-# Copiar formatos institucionales originales necesarios para el motor documental
-COPY docs/documentos-reales ./docs/documentos-reales
-# Copiar entrypoint ejecutable (LF)
+
+# Los documentos institucionales se suministran en ejecución mediante un volumen
+# privado; nunca se incorporan al contexto ni a la imagen Docker.
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh && \
-  mkdir -p /app/storage && \
+  mkdir -p /app/storage /app/docs/documentos-reales && \
   chown -R node:node /app
 
 USER node

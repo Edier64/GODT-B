@@ -8,6 +8,7 @@ on:
       - feature/aca-docker-preparation
   push:
     branches:
+      - main
       - feature/clinical-history-donor-intake-ocr
       - feature/aca-docker-preparation
   workflow_dispatch:
@@ -68,19 +69,45 @@ jobs:
 
       - name: Generar Prisma Client
         run: npx prisma generate
+        env:
+          # Prisma carga prisma.config.ts incluso al generar el cliente.
+          # Esta URL sintética no abre conexiones ni contiene credenciales reales.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Validar schema Prisma
         run: npx prisma validate
+        env:
+          # La validación del schema solo necesita que la variable esté definida.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Compilar NestJS (API + Worker)
         run: npm run build
 
-      - name: Ejecutar pruebas unitarias (sin DB externa ni OCR Gemini remoto)
+      - name: Ejecutar pruebas unitarias (sin DB externa, documentos privados ni Gemini remoto)
         run: >
           npx jest
           --runInBand
           --forceExit
-          --testPathIgnorePatterns="integration-spec|-integration\.spec|e2e-spec|real-http-api-operations|gemini-ocr-integration|fase-d2-e2e|fase-g1-4-diligenced-pdf-preview|fase-g1-clinical-history-intake|fase-g1-ingestion-ocr-canonical"
+          --testPathIgnorePatterns="integration-spec|-integration\\.spec|e2e-spec|real-http-api-operations|session-3-api|gemini-ocr-integration|fase-d2-e2e|fase-g1-4-diligenced-pdf-preview|fase-g1-clinical-history-intake|fase-g1-ingestion-ocr-canonical|all-19-formats-fidelity|pdf-visual-alignment|anexo-5-docx-robustness|institutional-document"
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-only-test-secret-not-valid-outside-this-run
+          GEMINI_API_KEY: ci-placeholder-not-a-real-key
+          AI_EXTERNAL_PROVIDER_ENABLED: "false"
+          # URLs sintéticas: no contienen secretos ni requieren una DB real.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
+          BULLMQ_DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
+
+      - name: Ejecutar pruebas HTTP de API (sin base de datos externa)
+        run: npx jest test/session-3-api.spec.ts --runInBand --forceExit
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci-only-test-secret-not-valid-outside-this-run
+          GEMINI_API_KEY: ci-placeholder-not-a-real-key
+          AI_EXTERNAL_PROVIDER_ENABLED: "false"
+          # URLs sintéticas: no contienen secretos ni requieren una DB real.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
+          BULLMQ_DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Verificar build Docker local (runtime + migrator) sin push
         if: github.event_name == 'pull_request' || github.event_name == 'push'

@@ -1,5 +1,7 @@
 # Sistema GODT Regional 3 — Backend API & Workers
 
+[![Backend CI](https://github.com/Edier64/GODT-B/actions/workflows/ci-cd-backend.yml/badge.svg?branch=main)](https://github.com/Edier64/GODT-B/actions/workflows/ci-cd-backend.yml)
+
 Backend modular de alta fidelidad clínica para la **Gestión Operativa de Donación y Trasplantes (GODT Regional 3, Colombia)**. Implementado con **NestJS**, **TypeScript**, **Prisma ORM**, **PostgreSQL** y **BullMQ**.
 
 El sistema administra expedientes de donantes, ingesta y comprensión documental mediante IA multimodal (Google Gemini) y OCR, catálogo de plantillas institucionales, propagación de datos canónicos, firmas, cadena de custodia y consolidación de dossiers con verificación criptográfica de integridad.
