@@ -140,3 +140,4 @@ El PR de pruebas incorporó cobertura para comprobar que Gemini envía la clave 
 - [Auditorías por fase](./audits/)
 - [Modelo y catálogo documental](./documents/)
 - [Contratos y Postman](./api/)
+- [Guía de despliegue Azure Container Apps](./deployment/azure-container-apps.md)
