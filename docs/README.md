@@ -28,6 +28,10 @@
 | [Despliegue Azure Container Apps](./deployment/azure-container-apps.md) | Arquitectura cloud, recursos y procedimiento de despliegue. |
 | [audits/](./audits/) | Informes de Fases D, E, F, G1 y notas de correcciones técnicas. |
 
+## Pruebas y calidad
+
+- [Sesión 3 — Pruebas e integración continua](./testing/sesion-3-pruebas-e-integracion-continua.md): pruebas unitarias, pruebas HTTP y workflow CI.
+
 ## Histórico de sprints
 
 Los documentos de seguimiento se agrupan por sprint, conservando su contenido original:
