@@ -69,9 +69,16 @@ jobs:
 
       - name: Generar Prisma Client
         run: npx prisma generate
+        env:
+          # Prisma carga prisma.config.ts incluso al generar el cliente.
+          # Esta URL sintética no abre conexiones ni contiene credenciales reales.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Validar schema Prisma
         run: npx prisma validate
+        env:
+          # La validación del schema solo necesita que la variable esté definida.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Compilar NestJS (API + Worker)
         run: npm run build
