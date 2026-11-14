@@ -69,6 +69,8 @@ Las pruebas automatizadas no leen ni necesitan el archivo `.env` local. El workf
 - `AI_EXTERNAL_PROVIDER_ENABLED=false`: impide que el adaptador intente invocar Gemini durante la suite automatizada.
 - `NODE_ENV=test`: identifica el entorno de pruebas.
 
+Jest carga `reflect-metadata` desde `jest.config.js` antes de importar los DTO que utilizan decoradores.
+
 La validación de la lógica que depende de Gemini debe hacerse con el proveedor simulado (mock). Las pruebas de integración que consumen realmente Gemini quedan fuera de la suite automática y no deben requerir una API key real para pasar.
 
 ### 3.2. Documentos institucionales privados
