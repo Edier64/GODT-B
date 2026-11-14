@@ -165,10 +165,13 @@ Cada elemento del array debe tener:
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey!)}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
             {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: {
+                "content-type": "application/json",
+                "x-goog-api-key": apiKey!,
+              },
               body: JSON.stringify({
                 contents: [{ parts: contentsParts }],
                 generationConfig: {
