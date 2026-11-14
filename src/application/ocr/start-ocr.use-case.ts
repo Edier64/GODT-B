@@ -3,7 +3,7 @@ import { OcrProcessingJob } from "@prisma/client";
 import { Queue } from "bullmq";
 import { OCR_REPOSITORY, OcrRepository } from "./ocr.repository";
 import { OCR_QUEUE } from "./ocr.queue";
-import { OcrAccessDeniedError } from "./ocr-errors";
+import { OcrAccessDeniedError, OcrNotFoundError } from "./ocr-errors";
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { OcrProviderPort, OCR_PROVIDER } from "./ocr-provider.port";
@@ -34,7 +34,7 @@ export class StartOcrUseCase {
       where: { id: documentId },
       include: { donor: { select: { originatingIpsName: true } } },
     });
-    if (!document) throw new Error("Document not found");
+    if (!document) throw new OcrNotFoundError("Document not found");
     if (
       actor.role !== "ADMIN" &&
       !actor.institutionalIps?.includes(document.donor.originatingIpsName)
