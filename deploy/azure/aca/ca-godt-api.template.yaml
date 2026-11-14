@@ -1,10 +1,11 @@
-name: ca-godt-api
+﻿name: ca-godt-api
 type: Microsoft.App/containerApps
 location: northcentralus
 identity:
   type: UserAssigned
   userAssignedIdentities:
-    /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-api: {}
+    /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-api:
+      {}
 properties:
   managedEnvironmentId: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.App/managedEnvironments/cae-godt-demo-ncus
   configuration:
@@ -18,13 +19,15 @@ properties:
         identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-api
     secrets:
       - name: database-url
-        value: __SET_SECURELY_AT_DEPLOYMENT__
+        keyVaultUrl: https://kvgodtdemoncus01.vault.azure.net/secrets/DATABASE-URL
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-api
       - name: jwt-secret
-        value: __SET_SECURELY_AT_DEPLOYMENT__
+        keyVaultUrl: https://kvgodtdemoncus01.vault.azure.net/secrets/JWT-SECRET
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-api
   template:
     containers:
       - name: api
-        image: acrgodtdemoncus01.azurecr.io/godt-api:__IMAGE_TAG_AFTER_COMMIT__
+        image: acrgodtdemoncus01.azurecr.io/godt-api:df1094cc315c
         resources:
           cpu: 0.5
           memory: 1Gi

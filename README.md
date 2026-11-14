@@ -1,196 +1,252 @@
-# GODT Backend
+# Sistema GODT Regional 3 — Backend API & Workers
 
-Base técnica del backend de GODT Regional 3. Este entregable cubre la
-infraestructura local, Sprint 1 y el flujo técnico de gestión documental/OCR
-de Sprint 2. No declara homologación clínica, jurídica o institucional.
-## Referencias documentales oficiales
+Backend modular de alta fidelidad clínica para la **Gestión Operativa de Donación y Trasplantes (GODT Regional 3, Colombia)**. Implementado con **NestJS**, **TypeScript**, **Prisma ORM**, **PostgreSQL** y **BullMQ**.
 
-Los documentos de referencia del sistema GODT Regional 3
-se encuentran en:
+El sistema administra expedientes de donantes, ingesta y comprensión documental mediante IA multimodal (Google Gemini) y OCR, catálogo de plantillas institucionales, propagación de datos canónicos, firmas, cadena de custodia y consolidación de dossiers con verificación criptográfica de integridad.
 
-`docs/documentos-reales/`
+---
 
-Estos archivos constituyen fuentes de análisis para el motor
-documental y las plantillas dinámicas.
+## 1. Arquitectura del Sistema
 
-Antes de modificar definiciones, formularios o generación PDF,
-el agente debe consultar los documentos disponibles.
+El backend sigue un diseño de **monolito modular guiado por el dominio (DDD)** con separación estricta de responsabilidades:
 
-No debe asumir que el catálogo es definitivo ni codificar
-una cantidad fija de documentos.
-
-Las plantillas publicadas y sus versiones deben administrarse
-mediante el motor documental del backend.
-
-Los archivos de referencia no sustituyen las versiones
-publicadas y homologadas dentro del sistema.
-## Diagnóstico y alcance de Sprint 0
-
-El modelo relacional se documenta en
-[`docs/data-model-validation.md`](./docs/data-model-validation.md). La fuente
-revisada declara 12 tablas conectadas, pero agrupa dos pares; el modelo físico
-implementado contiene las 14 entidades requeridas. No se inventan catálogos
-clínicos o jurídicos no presentes en la fuente. La conexión Prisma queda
-preparada para PostgreSQL local o para una URL de PostgreSQL gestionada por
-Supabase; no se incluye una `service_role_key` ni se expone ningún secreto.
-
-La arquitectura prevista es un monolito modular con dependencias dirigidas
-hacia el dominio:
-
-```mermaid
-flowchart LR
-  P[Presentation] --> A[Application]
-  A --> D[Domain]
-  I[Infrastructure] --> A
-  I --> D
-  I --> PG[(PostgreSQL / Supabase)]
-  I --> R[(Redis)]
-  P --> H[Health check]
+```
+src/
+├── domain/            # Entidades, agregados, reglas de negocio e interfaces puras
+├── application/       # Casos de uso, servicios de aplicación y puertos
+├── infrastructure/    # Adaptadores Prisma, almacenamiento privado, colas BullMQ, OCR y runtime
+├── presentation/      # Controladores HTTP NestJS, DTOs con class-validator, guards y decoradores
+├── health/            # Probe de salud (/health) para PostgreSQL, BullMQ y almacenamiento
+├── main.ts            # Punto de entrada HTTP (APP_MODE=api o 'all')
+└── worker.ts          # Punto de entrada BullMQ Worker sin servidor HTTP (APP_MODE=worker)
 ```
 
-La estructura inicial separa `src/health` como superficie de presentación y
-aplicación mínima y `src/infrastructure/prisma` como adaptador de persistencia.
-El modelo relacional validado y sus diferencias documentales se describen en
-[`docs/data-model-validation.md`](./docs/data-model-validation.md).
+### Componentes de Ejecución
 
-## Requisitos
+1. **`godt-api` (Servidor HTTP NestJS):**
+   - Expone la API RESTful bajo el prefijo `/api/v1` y documentación interactiva Swagger en `/docs`.
+   - Maneja autenticación institucional JWT y sesiones seguras en cookies `HttpOnly`.
+   - Encola trabajos asíncronos en colas persistentes (OCR y generación de Dossier).
+2. **`godt-worker` (Consumidor BullMQ sin HTTP):**
+   - Procesa trabajos en segundo plano:
+     - `OcrWorker`: extracción multimodal con Google Gemini / reglas locales / Tesseract.
+     - `BullmqDossierQueueService`: compilación de dossiers, PDF consolidado, empaquetado ZIP y cálculo de checksums SHA-256.
+   - Puede correr en el mismo proceso del API en desarrollo (`APP_MODE=all`), o en un proceso/contenedor independiente (`APP_MODE=worker`).
+3. **`godt-migrator` (Etapa controlada de migraciones):**
+   - Ejecuta `prisma migrate deploy` (schema `public`) y migraciones DDL de BullMQ (schema `bullmq`) de forma idempotente antes de levantar réplicas.
 
-- Node.js LTS (22 recomendado)
-- Docker Desktop con Compose v2
+### Decisión de Infraestructura: BullMQ sobre PostgreSQL
+A diferencia de arquitecturas tradicionales dependientes de Redis, este backend utiliza **PostgreSQL** como motor de colas persistentes (`createPostgresBackend` de `bullmq` en el schema `bullmq`). Esto **elimina la necesidad obligatoria de Redis**, reduciendo costos de infraestructura tanto en local como en Azure. Redis se mantiene únicamente como opción retrocompatible.
 
-## Configuración local
+---
 
-1. Copiar `.env.docker.example` a `.env.docker` y cambiar las contraseñas locales.
-2. Copiar `.env.example` a `.env`.
-3. Levantar PostgreSQL, Redis y pgAdmin:
+## 2. Requisitos Previos
 
-   ```powershell
-   docker compose --env-file .env.docker up -d
-   ```
+- **Node.js:** Versión 20.x o 22.x LTS (se recomienda Node 22).
+- **npm:** Versión 10+ u 11+.
+- **Docker Desktop:** Con soporte para Docker Compose v2 (para levantar PostgreSQL en local).
+- **Opcional para OCR local:** Binario de Tesseract OCR y herramientas Poppler (`pdftoppm`, `pdfinfo`) si no se utiliza el motor de IA multimodal de Gemini.
 
-4. Instalar dependencias y generar el cliente Prisma:
+---
 
-   ```powershell
-   npm install
-   npm run prisma:generate
-   ```
+## 3. Configuración de Variables de Entorno
 
-5. Validar y aplicar las migraciones:
+El repositorio dispone de tres plantillas de configuración según el modo de ejecución:
 
-   ```powershell
-   npm run prisma:validate
-   npm run prisma:deploy
-   ```
+| Archivo | Propósito |
+|---|---|
+| `.env.example` | Plantilla para ejecución del backend directamente en Windows/host. |
+| `.env.docker.example` | Plantilla de credenciales para los contenedores de soporte (`docker-compose.yml`). |
+| `.env.local.example` | Plantilla para el stack completo emulado en Docker (`docker-compose.local.yml`). |
 
-6. Iniciar NestJS:
+### Variables Principales (`.env`)
 
-   ```powershell
-   npm run start:dev
-   ```
+```ini
+# --- ENTORNO Y PUERTO ---
+NODE_ENV=development
+PORT=3000
+APP_NAME=godt-backend
+SWAGGER_ENABLED=true
 
-Los documentos se guardan en `DOCUMENT_STORAGE_PATH` (privado y excluido de
-Git). Redis debe estar disponible para que el worker BullMQ procese OCR.
+# --- BASE DE DATOS (POSTGRESQL 16/17) ---
+DATABASE_URL=postgresql://godt:change_this_local_password@localhost:5432/godt?schema=public
 
-El health check estará disponible en `http://localhost:3000/health` y Swagger
-en `http://localhost:3000/docs`.
+# --- COLAS BULLMQ (POSTGRESQL POR DEFECTO) ---
+BULLMQ_BACKEND=postgres
+BULLMQ_PG_SCHEMA=bullmq
+# Si desea usar Redis en su lugar:
+# BULLMQ_BACKEND=redis
+# REDIS_URL=redis://localhost:6379
 
-## Servicios
+# --- SEGURIDAD Y JWT ---
+# Mínimo 32 caracteres aleatorios y seguros (el arranque fallará si es débil o placeholder)
+JWT_SECRET=tu_secreto_aleatorio_muy_largo_de_al_menos_32_caracteres_12345
+JWT_ISSUER=godt-backend
+JWT_AUDIENCE=godt-frontend
+JWT_ACCESS_EXPIRES_IN=15m
+REFRESH_TOKEN_TTL_DAYS=7
+REFRESH_COOKIE_NAME=godt_refresh_token
+AUTH_COOKIE_SECURE=false
+AUTH_COOKIE_SAMESITE=strict
 
-| Servicio | URL/host | Persistencia |
-|---|---|---|
-| PostgreSQL | `localhost:5432` | `godt-postgres-data` |
-| Redis | `localhost:6379` | `godt-redis-data` |
-| pgAdmin | `http://localhost:5050` | `godt-pgadmin-data` |
+# --- CORS ---
+CORS_ORIGIN=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
 
-En pgAdmin, registrar PostgreSQL con host `postgres`, puerto `5432`, usuario y
-contraseña definidos en `.env.docker`.
+# --- ALMACENAMIENTO DE DOCUMENTOS ---
+STORAGE_PROVIDER=local
+STORAGE_BASE_PATH=storage/private
+DOCUMENT_STORAGE_MAX_BYTES=20971520
 
-## Mantenimiento de datos
-
-Detener contenedores sin borrar datos:
-
-```powershell
-docker compose stop
-docker compose start
+# --- IA MULTIMODAL Y OCR (OPCIONAL / RECOMENDADO EN DESARROLLO) ---
+AI_EXTERNAL_PROVIDER_ENABLED=true
+GEMINI_API_KEY=tu_api_key_de_google_ai_studio
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
-Eliminar contenedores conservando volúmenes:
+---
+
+## 4. Guía de Ejecución Local (Paso a Paso)
+
+Siga este orden para inicializar el backend por primera vez:
+
+### Paso 1: Levantar la Base de Datos con Docker
+
+En la raíz de `GODT-B`:
 
 ```powershell
-docker compose down
+# 1. Crear el archivo de entorno para Docker
+Copy-Item .env.docker.example .env.docker
+
+# 2. Iniciar el contenedor de PostgreSQL (Redis y pgAdmin son opcionales)
+docker compose --env-file .env.docker up -d postgres
+
+# 3. Confirmar que el contenedor está "healthy"
+docker compose --env-file .env.docker ps
 ```
 
-Respaldar y restaurar PostgreSQL:
+> **Nota:** Por defecto, el contenedor expone el puerto `5432` con usuario `godt`, contraseña `change_this_local_password` y base de datos `godt`.
+
+### Paso 2: Configurar el Entorno del Backend
 
 ```powershell
-docker compose exec -T postgres pg_dump -U godt -d godt > .\backups\godt.sql
-Get-Content .\backups\godt.sql | docker compose exec -T postgres psql -U godt -d godt
+# Copiar plantilla si no tiene .env
+Copy-Item .env.example .env
 ```
 
-Para reconstruir imágenes y conservar datos:
+Asegúrese de que `JWT_SECRET` tenga al menos 32 caracteres reales (no use textos de ejemplo).
+
+### Paso 3: Migraciones y Creación de Esquemas
+
+Ejecute las migraciones relacionales de Prisma y las migraciones de colas de BullMQ en PostgreSQL:
 
 ```powershell
-docker compose down
-docker compose pull
-docker compose build --no-cache
-docker compose --env-file .env.docker up -d
-```
+# 1. Generar cliente Prisma
+npm run prisma:generate
 
-No usar `docker compose down -v` como operación habitual: elimina los datos
-locales persistidos.
-
-## Validación
-
-```powershell
-npm test
-npm run test:integration
-npm run build
-npm run lint
-npm run format:check
+# 2. Validar esquema
 npm run prisma:validate
-npm audit
+
+# 3. Aplicar migraciones SQL de Prisma (schema public)
+npm run prisma:deploy
+
+# 4. Crear tablas de colas persistentes (schema bullmq)
+npm run bullmq:migrate
 ```
 
-La prueba de integración requiere PostgreSQL activo y se ejecuta explícitamente:
+### Paso 4: Carga de Datos Maestros y Usuario Administrador
+
+El sistema opera bajo un modelo de **cero registro público** y requiere que los catálogos y usuarios existan en base de datos:
 
 ```powershell
-$env:RUN_INTEGRATION_TESTS="true"
-npm run test:integration
+# 1. Sembrar las instituciones de salud oficiales de Regional 3 (HUV, Imbanaco, Occidente, Valle del Lili, etc.)
+npx ts-node scripts/seed-institutions.ts
+
+# 2. Sembrar las 19 plantillas documentales normativas
+npm run seed:templates
+
+# 3. Aprovisionar el usuario administrador institucional inicial
+npm run auth:provision-user -- --email admin@godt.gov.co --name "Administrador GODT" --role ADMIN --all-active-institutions
+```
+*(El comando solicitará la contraseña de forma interactiva y segura sin eco en consola, o puede asignarla temporalmente con `$env:PROVISION_USER_PASSWORD="tu_password_fuerte_123"`).*
+
+### Paso 5: Iniciar el Servidor de Desarrollo
+
+```powershell
+# Cargar variables en la sesión PowerShell si arranca directo en host
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+    [System.Environment]::SetEnvironmentVariable($matches[1].Trim(), $matches[2].Trim(), "Process")
+  }
+}
+
+npm run start:dev
 ```
 
-## Evidencia de validación
+### Paso 6: Verificación del Servicio
 
-Validado localmente:
+- **Health Probe:** [http://localhost:3000/health](http://localhost:3000/health) (debe responder `{"status":"ok","database":"up","queue":"up","storage":"up"}`)
+- **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs)
+- **API Base:** [http://localhost:3000/api/v1](http://localhost:3000/api/v1)
 
-- PostgreSQL 17.6: contenedor `healthy`, conexión aceptada y datos conservados
-  después de `docker compose restart`.
-- Redis 7.4: contenedor `healthy`, `PONG` y datos conservados después del
-  reinicio.
-- pgAdmin 4: contenedor activo en `http://localhost:5050`.
-- Prisma: el esquema y las migraciones versionadas deben validarse contra
-  PostgreSQL activo con `npx prisma migrate status`; en esta sesión ese
-  servicio no estaba disponible.
-- NestJS: `GET /health` respondió `status=ok`, `database=up` y `redis=up`.
-- Swagger: `GET /docs` respondió HTTP 200.
-- Jest, Build y Prettier: correctos en la validación del Sprint 05. Las
-  pruebas de integración requieren PostgreSQL activo y no se declaran
-  ejecutadas cuando el servicio no está disponible.
-- `npm audit fix` fue ejecutado sin `--force`. Permanecen vulnerabilidades
-  transitivas en Jest/CLI/Prisma y vulnerabilidades de runtime asociadas a
-  Multer, `js-yaml` y Prisma; sus correcciones disponibles requieren cambios
-  mayores o aún no tienen una actualización compatible con NestJS 11/Prisma 6.
+---
 
-Las restricciones de mínimo dos representantes para Anexo 3 y la validación de
-metadata de auditoría están implementadas en dominio/aplicación; una FK no
-puede garantizar ninguna de ellas. Las reglas jurídicas y la asignación
-institucional de usuarios siguen pendientes de homologación.
+## 5. Modo de Ejecución Completo con Docker Compose (Paridad con Azure)
 
-El estado y las decisiones de Sprint 1 están documentados en
-[`docs/sprint-1.md`](./docs/sprint-1.md).
-El flujo documental y OCR está documentado en
-[`docs/sprint-2.md`](./docs/sprint-2.md).
-La fundación del catálogo y las instancias documentales está documentada en
-[`docs/sprint-3.md`](./docs/sprint-3.md).
-Sprint 2 no se declara cerrado: Tesseract todavía no transforma su salida en
-candidatos canónicos y el OCR de PDF multipágina requiere un adaptador seguro
-de rasterización.
+Para probar la plataforma completa idéntica a producción (API + Worker + Base de Datos + Gateway Nginx del Frontend) en un solo comando:
+
+```powershell
+# 1. Crear .env.local a partir del ejemplo
+Copy-Item .env.local.example .env.local
+
+# 2. Ajustar contraseñas y secretos en .env.local
+
+# 3. Levantar todo el stack
+docker compose -f docker-compose.local.yml --env-file .env.local up --build
+```
+
+El sistema estará accesible de forma centralizada en **`http://localhost:8080`** mediante el Gateway Nginx.
+
+---
+
+## 6. Scripts Disponibles en `package.json`
+
+| Script | Descripción |
+|---|---|
+| `npm run start:dev` | Inicia el API en modo desarrollo con recarga en caliente (watch). |
+| `npm run start:prod` | Inicia el API compilado en producción (`node dist/src/main.js`). |
+| `npm run start:worker` | Inicia únicamente los workers de BullMQ sin servidor HTTP. |
+| `npm run build` | Compila TypeScript a JavaScript en el directorio `dist/`. |
+| `npm run prisma:generate` | Genera los tipos y el cliente tipado de Prisma. |
+| `npm run prisma:deploy` | Aplica migraciones SQL pendientes en la base de datos de destino. |
+| `npm run prisma:migrate` | Crea y aplica nuevas migraciones en entorno de desarrollo (`migrate dev`). |
+| `npm run bullmq:migrate` | Ejecuta las migraciones DDL para las colas BullMQ en PostgreSQL. |
+| `npm run auth:provision-user` | Utilidad administrativa para crear o actualizar usuarios con contraseña Argon2id. |
+| `npm run seed:templates` | Siembra las plantillas normativas oficiales del motor documental. |
+| `npm run test` | Ejecuta la suite de pruebas unitarias con Jest. |
+| `npm run test:integration` | Ejecuta pruebas de integración contra PostgreSQL activo. |
+| `npm run lint` | Ejecuta el linter ESLint con auto-corrección. |
+
+---
+
+## 7. Módulos y Capacidades del Sistema
+
+- **Autenticación y Sesiones (`presentation/auth`):** Login institucional, refresh tokens criptográficos en cookies `HttpOnly`, revocación de sesiones, rotación con detección de reuso y hashing Argon2id.
+- **Expedientes de Donantes (`presentation/donors`):** Gestión de donantes, datos clínicos, antropometría y código RND.
+- **Procesos de Donación (`presentation/processes`):** Orquestación integral de procesos de donación, asignación de IPS y participantes clínicos.
+- **Diccionario Canónico (`presentation/canonical`):** Inventario de campos clínicos canónicos con historial de cambios, proveniencia y reglas de propagación cruzada.
+- **Motor Documental y Catálogo (`presentation/document-engine`):** Versiones versionadas con JSON Schema, UI Schema, reglas de aplicabilidad y validación.
+- **Ciclo de Vida Documental (`presentation/document-lifecycle`):** Borrador, completitud, aprobación, firmas electrónicas y registro de cadena de custodia inmutable.
+- **Extracción Inteligente e Ingesta OCR (`presentation/ocr`):** Procesamiento de historias clínicas DOCX, PDF e imágenes vía Gemini Multimodal y respaldo de reglas locales.
+- **Dossier Clínico Consolidado (`presentation/dossier`):** Generación asíncrona de expediente compilado (PDF único, exportación ZIP, manifiesto canónico y verificación de digest SHA-256).
+
+---
+
+## 8. Despliegue en Azure Container Apps
+
+El repositorio está preparado para despliegue en **Azure Container Apps (ACA)** mediante GitHub Actions OIDC:
+
+- **Imágenes Multi-Stage ([Dockerfile](./Dockerfile)):**
+  - Target `runtime`: contenedor mínimo y seguro para `godt-api` y `godt-worker` (sin devDependencies, usuario no root `node`).
+  - Target `migrator`: contenedor especializado para ejecutar migraciones Prisma y BullMQ en un Container App Job previo al despliegue.
+- **Almacenamiento Cloud:** Integración con **Azure Blob Storage** privado usando autenticación nativa por **Managed Identity** (`DefaultAzureCredential`).
+- **Guía completa de despliegue:** Consulte [deploy/azure/README.md](./deploy/azure/README.md) para detalles de arquitectura cloud, costos en Azure for Students y scripts de aprovisionamiento con Azure CLI.

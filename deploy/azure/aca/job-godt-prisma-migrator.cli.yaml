@@ -1,0 +1,39 @@
+﻿identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-migrator:
+      {}
+properties:
+  configuration:
+    triggerType: Manual
+    replicaTimeout: 1800
+    replicaRetryLimit: 0
+    manualTriggerConfig:
+      replicaCompletionCount: 1
+      parallelism: 1
+    registries:
+      - server: acrgodtdemoncus01.azurecr.io
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-migrator
+    secrets:
+      - name: database-url
+        keyVaultUrl: https://kvgodtdemoncus01.vault.azure.net/secrets/DATABASE-URL
+        identity: /subscriptions/bce68201-72d6-452a-8aa9-31b15d163096/resourceGroups/rg-godt-demo-ncus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-godt-migrator
+  template:
+    containers:
+      - name: prisma-migrator
+        image: acrgodtdemoncus01.azurecr.io/godt-migrator:df1094cc315c
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: APP_MODE
+            value: migrate
+          - name: DATABASE_URL
+            secretRef: database-url
+          - name: BULLMQ_BACKEND
+            value: postgres
+          - name: BULLMQ_PG_SCHEMA
+            value: bullmq
+
