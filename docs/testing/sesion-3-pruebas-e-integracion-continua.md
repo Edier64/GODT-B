@@ -59,6 +59,31 @@ En eventos `pull_request` hacia `main` y en `push` a `main` o a las ramas featur
 
 Los jobs de publicación de imágenes, migraciones y despliegue Azure siguen condicionados a una ejecución manual (`workflow_dispatch`); las pruebas de esta sesión no despliegan recursos.
 
+
+### 3.1. Aislamiento de credenciales y servicios externos
+
+Las pruebas automatizadas no leen ni necesitan el archivo `.env` local. El workflow define únicamente valores sintéticos de alcance temporal para el proceso de Jest:
+
+- `JWT_SECRET`: clave ficticia para que los módulos que validan configuración puedan inicializarse. No es una clave de aplicación ni debe reutilizarse fuera de CI.
+- `GEMINI_API_KEY`: marcador no válido, sin capacidad de autenticación.
+- `AI_EXTERNAL_PROVIDER_ENABLED=false`: impide que el adaptador intente invocar Gemini durante la suite automatizada.
+- `NODE_ENV=test`: identifica el entorno de pruebas.
+
+La validación de la lógica que depende de Gemini debe hacerse con el proveedor simulado (mock). Las pruebas de integración que consumen realmente Gemini quedan fuera de la suite automática y no deben requerir una API key real para pasar.
+
+### 3.2. Documentos institucionales privados
+
+Los archivos originales de `docs/documentos-reales/` están excluidos del control de versiones mediante `.gitignore`. No se deben añadir al repositorio ni como fixtures de CI.
+
+Las suites que verifican fidelidad, hashes, dimensiones o renderizado sobre esos originales se excluyen de la ejecución general de GitHub Actions:
+
+- `all-19-formats-fidelity.spec.ts`
+- `pdf-visual-alignment.spec.ts`
+- `anexo-5-docx-robustness.spec.ts`
+- `institutional-document.spec.ts`
+
+Estas pruebas se conservan y deben ejecutarse localmente cuando los documentos privados estén disponibles en `docs/documentos-reales/`. Su exclusión del CI no significa que hayan pasado: GitHub Actions no dispone de los originales y no puede certificar su fidelidad documental.
+
 ## 4. Comandos para reproducir localmente
 
 ```bash
