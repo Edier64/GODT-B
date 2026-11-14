@@ -170,7 +170,7 @@ flowchart TB
 2. Los resultados OCR son candidatos. El sistema permite confirmarlos, modificarlos o rechazarlos; solo los valores ratificados deben alimentar el dato canónico.
 3. La integración Gemini está bloqueada en staging y production por el adaptador. No enviar información clínica real a un proveedor externo sin autorización institucional.
 4. Las integraciones directas con SIAM/Casiopea y Red Data INS pertenecen a fases futuras en los entregables iniciales.
-5. La cabecera del archivo deploy/azure/README.md aún conserva el texto de estado preparatorio «No se han aprovisionado recursos cloud». Esa leyenda debe contrastarse/actualizarse antes de reutilizar el README como evidencia del estado operativo, porque no refleja el despliegue que se ha trabajado y validado en el entorno del proyecto.
+5. La guía deploy/azure/README.md se sincronizó con el despliegue de demostración provisionado y validado en el entorno del proyecto. Sus comandos siguen siendo procedimientos de reconstrucción/actualización: antes de ejecutarlos, confirmar en Azure el estado de los recursos y las revisiones activas.
 
 ## 7. Decisiones arquitectónicas
 

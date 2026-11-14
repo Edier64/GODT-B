@@ -1,6 +1,6 @@
 # GODT Regional 3 — Guía de Despliegue en Azure Container Apps (Consumption)
 
-> **Estado actual:** Repositorios preparados para Azure Container Apps (ACA), Azure Container Registry (ACR), PostgreSQL Flexible Server, Azure Blob Storage privado y GitHub Actions OIDC. **No se han aprovisionado recursos cloud en esta fase.**  
+> **Estado actual:** El entorno de demostración de GODT fue provisionado y validado en Azure: grupo de recursos `rg-godt-demo-ncus`, Container Apps Environment `cae-godt-demo-ncus`, gateway con ingress externo, API con ingress interno, worker sin ingress y job de migraciones; PostgreSQL Flexible Server privado `godt-pg-demo-ncus-01`, Azure Blob Storage privado `godtdemostgncus01` y ACR `acrgodtdemoncus01`. Esta guía conserva también los pasos para reconstruir o actualizar el entorno. **Antes de ejecutar scripts, confirma en Azure el estado actual de los recursos y de las revisiones activas.**  
 > **Suscripción objetivo:** Azure for Students (crédito inicial USD 100, vigencia según portal Azure).
 
 ---
