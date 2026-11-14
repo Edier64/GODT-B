@@ -1,4 +1,13 @@
-import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { Type } from "class-transformer";
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateNested,
+} from "class-validator";
 
 export enum OcrDecision {
   CONFIRMADO = "CONFIRMADO",
@@ -34,5 +43,9 @@ export class BatchPropagateItemDto {
 }
 
 export class BatchPropagateOcrFieldsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => BatchPropagateItemDto)
   items!: BatchPropagateItemDto[];
 }
