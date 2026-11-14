@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { ExecutionContext, INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { DonorsController } from "../src/presentation/donors/donors.controller";
 import { JwtAuthGuard } from "../src/presentation/auth/jwt-auth.guard";
@@ -46,7 +46,7 @@ describe("Sesión 3 — pruebas HTTP de la API de donantes", () => {
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
-        canActivate: (context: { switchToHttp: () => { getRequest: () => any } }) => {
+        canActivate: (context: ExecutionContext) => {
           context.switchToHttp().getRequest().user = {
             userId: "user-test-1",
             role: "ADMIN",
@@ -66,7 +66,7 @@ describe("Sesión 3 — pruebas HTTP de la API de donantes", () => {
       }),
     );
     await app.listen(0);
-    const address = app.getHttpServer().address();
+    const address = app.getHttpServer().address() as { port: number };
     baseUrl = `http://127.0.0.1:${address.port}`;
   });
 
