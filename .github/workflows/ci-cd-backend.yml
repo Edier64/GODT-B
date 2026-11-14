@@ -94,6 +94,9 @@ jobs:
           JWT_SECRET: ci-only-test-secret-not-valid-outside-this-run
           GEMINI_API_KEY: ci-placeholder-not-a-real-key
           AI_EXTERNAL_PROVIDER_ENABLED: "false"
+          # URLs sintéticas: no contienen secretos ni requieren una DB real.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
+          BULLMQ_DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Ejecutar pruebas HTTP de API (sin base de datos externa)
         run: npx jest test/session-3-api.spec.ts --runInBand --forceExit
@@ -102,6 +105,9 @@ jobs:
           JWT_SECRET: ci-only-test-secret-not-valid-outside-this-run
           GEMINI_API_KEY: ci-placeholder-not-a-real-key
           AI_EXTERNAL_PROVIDER_ENABLED: "false"
+          # URLs sintéticas: no contienen secretos ni requieren una DB real.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
+          BULLMQ_DATABASE_URL: postgresql://ci:ci@localhost:5432/godt_ci?schema=public
 
       - name: Verificar build Docker local (runtime + migrator) sin push
         if: github.event_name == 'pull_request' || github.event_name == 'push'
