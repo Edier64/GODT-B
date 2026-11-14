@@ -77,10 +77,14 @@ export class StartOcrUseCase {
           document.mimeType,
           document.processId || undefined,
         );
+      } else {
+        await this.repository.failJob(job.id, "OCR_QUEUE_UNAVAILABLE");
       }
     }
 
-    return job;
+    // Return the persisted state: direct fallback may already have completed or failed,
+    // and an unavailable queue without local fallback must not remain EN_COLA.
+    return (await this.repository.findJob(job.id)) ?? job;
   }
 
   private async processDirectly(
