@@ -255,4 +255,4 @@ El repositorio está preparado para despliegue en **Azure Container Apps (ACA)**
 
 ## 7. Documentación del repositorio
 
-Consulte el [índice de documentación](./docs/README.md) para acceder a arquitectura, requisitos, ADR, contratos y documentos históricos organizados por Sprint.
+Consulte el [índice de documentación](./docs/README.md) para acceder a arquitectura, requisitos, ADR, auditorías, documentos funcionales y el histórico de Sprints.

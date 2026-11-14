@@ -1,24 +1,36 @@
 # Documentación — GODT-B
 
-Documentación técnica y de seguimiento del backend GODT Regional 3.
+Índice de la documentación técnica, funcional y de seguimiento del backend GODT Regional 3.
 
-## Documentos vigentes
+## Documentación principal
 
-| Documento | Propósito |
+| Documento | Contenido |
 |---|---|
-| [Arquitectura](./arquitectura.md) | Arquitectura implementada y diagramas Mermaid de contexto y contenedores. |
-| [Requisitos](./requisitos.md) | Historias, criterios de aceptación y requisitos no funcionales. |
-| [ADR-001](./adr/ADR-001-stack.md) | Decisión de lenguaje y frameworks. |
-| [ADR-002](./adr/ADR-002-datos-y-despliegue.md) | Decisión de base de datos y despliegue. |
-| [Contrato de API documental](./document-api-contract.md) | Contratos del módulo documental. |
-| [Modelo de datos documental](./document-data-model.md) | Entidades y relaciones documentales. |
-| [Ciclo de vida documental](./document-lifecycle.md) | Estados y reglas de transición. |
-| [Catálogo dinámico](./dynamic-document-catalog.md) | Plantillas y formularios dinámicos. |
-| [Postman](./postman/README.md) | Colección y ambiente de pruebas de API. |
+| [Arquitectura](./arquitectura.md) | Diagrama de contexto, diagrama de contenedores, tecnologías y protocolos. |
+| [Requisitos](./requisitos.md) | Historias de usuario, criterios de aceptación y requisitos no funcionales. |
+| [Análisis de arquitectura y revisión senior](./analisis-arquitectura-y-revision.md) | Contraste con entregables iniciales, dependencias, decisiones y revisión OCR. |
+
+## Decisiones arquitectónicas
+
+- [ADR-001 — Stack de lenguaje y frameworks](./adr/ADR-001-stack.md)
+- [ADR-002 — Base de datos y plataforma de despliegue](./adr/ADR-002-datos-y-despliegue.md)
+- [ADR-004 — Diccionario canónico y propagación](./adr/ADR-004-canonical-dictionary-and-propagation.md)
+- [ADR-005 — Ciclo de vida, snapshots y firmas](./adr/ADR-005-document-lifecycle-snapshots-and-signatures.md)
+
+## Documentación por área
+
+| Carpeta | Qué contiene |
+|---|---|
+| [domain/](./domain/) | Modelo y conceptos del dominio, proceso de donación y diccionario canónico. |
+| [documents/](./documents/) | Motor documental, plantillas, dependencias, formularios, campos, PDF y ciclo de vida. |
+| [ocr/](./ocr/) | Diseño del flujo de ingesta y OCR asistido. |
+| [api/](./api/) | Contrato documental, guía Postman, colección y ambiente. |
+| [Despliegue Azure Container Apps](./deployment/azure-container-apps.md) | Arquitectura cloud, recursos y procedimiento de despliegue. |
+| [audits/](./audits/) | Informes de Fases D, E, F, G1 y notas de correcciones técnicas. |
 
 ## Histórico de sprints
 
-Los documentos existentes de seguimiento se conservaron y agruparon por sprint:
+Los documentos de seguimiento se agrupan por sprint, conservando su contenido original:
 
 - [Sprint 01](./sprints/sprint-01/README.md)
 - [Sprint 02](./sprints/sprint-02/README.md)
@@ -30,13 +42,11 @@ Los documentos existentes de seguimiento se conservaron y agruparon por sprint:
 - [Sprint 08](./sprints/sprint-08/)
 - [Sprint 09](./sprints/sprint-09/)
 
-## Auditorías y referencias técnicas
+## Guía de organización
 
-Los informes FASE_* permanecen en el directorio principal de `docs/` como evidencia de auditorías y etapas técnicas; no se mezclan con el historial de Sprints. Los inventarios, matrices, reglas de dependencia y diseños del motor documental también permanecen en `docs/`.
-
-## Convención
-
-- Arquitectura, requisitos y ADR son documentación vigente.
-- `docs/sprints/sprint-NN/` contiene el seguimiento histórico de cada sprint.
-- `docs/postman/` contiene artefactos para probar los contratos HTTP.
-- Los documentos históricos se reubicaron sin reescribir su contenido.
+- Los documentos principales se conservan en la raíz de `docs/`.
+- Los ADR se agrupan en `docs/adr/`.
+- Los informes históricos de sprint se guardan en `docs/sprints/sprint-NN/`.
+- Las auditorías se agrupan por fase en `docs/audits/phase-*/`.
+- Los documentos del dominio, motor documental, OCR, API y despliegue se separan por responsabilidad.
+- Los documentos fueron reubicados conservando el contenido; los cambios de nombre solo normalizan rutas y convenciones de documentación.
