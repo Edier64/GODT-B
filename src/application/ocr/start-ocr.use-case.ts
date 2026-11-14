@@ -62,13 +62,15 @@ export class StartOcrUseCase {
         },
       );
     } catch (queueErr) {
-      // En modo desarrollo o si Redis no está activo, procesar directamente en memoria
       this.logger.warn(
         `Cola BullMQ no disponible (${
           queueErr instanceof Error ? queueErr.message : "error"
-        }). Procesando extracción directamente.`,
+        }).`,
       );
       if (this.documentUnderstanding && this.storage) {
+        this.logger.warn(
+          "Se ejecutará el fallback local de OCR para el trabajo actual.",
+        );
         await this.processDirectly(
           job.id,
           document.id,
@@ -78,6 +80,9 @@ export class StartOcrUseCase {
           document.processId || undefined,
         );
       } else {
+        this.logger.error(
+          "No hay fallback local disponible; el trabajo OCR se marcará como FALLIDO.",
+        );
         await this.repository.failJob(job.id, "OCR_QUEUE_UNAVAILABLE");
       }
     }
