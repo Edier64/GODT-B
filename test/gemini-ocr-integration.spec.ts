@@ -329,4 +329,43 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       }, 35000);
     }
   });
+
+  describe("5. Seguridad de la solicitud HTTP", () => {
+    it("envía la API key mediante x-goog-api-key y no en la URL", async () => {
+      const config = new ConfigService({
+        NODE_ENV: "development",
+        AI_EXTERNAL_PROVIDER_ENABLED: "true",
+        GEMINI_API_KEY: "synthetic-test-key",
+      });
+      const adapter = new GeminiOcrAdapter(config);
+      const originalFetch = global.fetch;
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: "[]" }] } }],
+        }),
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      try {
+        await adapter.process({
+          buffer: Buffer.from("synthetic document"),
+          mimeType: "text/plain",
+          rawText: "Synthetic OCR test document",
+        });
+
+        const request = fetchMock.mock.calls[0] as unknown as [
+          string,
+          RequestInit,
+        ];
+        const headers = request[1].headers as Record<string, string>;
+
+        expect(request[0]).not.toContain("?key=");
+        expect(headers["x-goog-api-key"]).toBe("synthetic-test-key");
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+  });
+
 });
