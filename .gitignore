@@ -40,6 +40,7 @@ lerna-debug.log*
 **/documentos-diligenciados/
 **/datos-pacientes/
 **/documentos-reales/
+!**/documentos-reales/.gitkeep
 
 # Archivos temporales de procesamiento
 **/ocr-temp/

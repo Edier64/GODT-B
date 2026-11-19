@@ -23,24 +23,35 @@ export class GeminiOcrAdapter implements OcrProviderPort {
   /**
    * Determina si el proveedor externo Gemini está autorizado y habilitado para ejecutarse.
    * Reglas de gobernanza clínica:
-   * 1. Estrictamente deshabilitado en 'staging' y 'production' hasta aval institucional.
+   * 1. En 'staging' y 'production', requiere aval institucional explícito
+   *    (AI_CLINICAL_DATA_PROCESSING_AUTHORIZED=true o AI_SYNTHETIC_DATA_ONLY=true).
    * 2. Permitido en 'development' (y 'test' controlado) si AI_EXTERNAL_PROVIDER_ENABLED=true.
    * 3. Si está habilitado pero falta GEMINI_API_KEY, arroja GeminiConfigurationError.
    */
   isEnabled(): boolean {
     const nodeEnv = this.config.get<string>("NODE_ENV", "development");
 
-    // Prohibido terminantemente en staging y production
+    // En staging y production, verificar consentimiento institucional o modo sintético
     if (nodeEnv === "staging" || nodeEnv === "production") {
       const explicit =
         this.config.get<string>("AI_EXTERNAL_PROVIDER_ENABLED") === "true" ||
         this.config.get<string>("AI_PROVIDER_ENABLED") === "true";
-      if (explicit) {
+      const isClinicallyAuthorized =
+        this.config.get<string>("AI_CLINICAL_DATA_PROCESSING_AUTHORIZED") === "true" ||
+        this.config.get<string>("AI_INSTITUTIONAL_DATA_PROCESSING_AUTHORIZED") === "true";
+      const isSyntheticOnly =
+        this.config.get<string>("AI_SYNTHETIC_DATA_ONLY") === "true";
+
+      if (!explicit) {
+        return false;
+      }
+
+      if (!isClinicallyAuthorized && !isSyntheticOnly) {
         this.logger.warn(
           "Proveedor externo Gemini desactivado por política de seguridad: Prohibido en staging/production sin aval institucional.",
         );
+        return false;
       }
-      return false;
     }
 
     // Comprobar variable canónica AI_EXTERNAL_PROVIDER_ENABLED (y alias AI_PROVIDER_ENABLED)
