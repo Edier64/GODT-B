@@ -1,5 +1,7 @@
 # Sistema GODT Regional 3 — Backend API & Workers
 
+[![Backend CI](https://github.com/Edier64/GODT-B/actions/workflows/ci-cd-backend.yml/badge.svg?branch=main)](https://github.com/Edier64/GODT-B/actions/workflows/ci-cd-backend.yml)
+
 Backend modular de alta fidelidad clínica para la **Gestión Operativa de Donación y Trasplantes (GODT Regional 3, Colombia)**. Implementado con **NestJS**, **TypeScript**, **Prisma ORM**, **PostgreSQL** y **BullMQ**.
 
 El sistema administra expedientes de donantes, ingesta y comprensión documental mediante IA multimodal (Google Gemini) y OCR, catálogo de plantillas institucionales, propagación de datos canónicos, firmas, cadena de custodia y consolidación de dossiers con verificación criptográfica de integridad.
@@ -250,3 +252,9 @@ El repositorio está preparado para despliegue en **Azure Container Apps (ACA)**
   - Target `migrator`: contenedor especializado para ejecutar migraciones Prisma y BullMQ en un Container App Job previo al despliegue.
 - **Almacenamiento Cloud:** Integración con **Azure Blob Storage** privado usando autenticación nativa por **Managed Identity** (`DefaultAzureCredential`).
 - **Guía completa de despliegue:** Consulte [deploy/azure/README.md](./deploy/azure/README.md) para detalles de arquitectura cloud, costos en Azure for Students y scripts de aprovisionamiento con Azure CLI.
+
+---
+
+## 7. Documentación del repositorio
+
+Consulte el [índice de documentación](./docs/README.md) para acceder a arquitectura, requisitos, ADR, auditorías, documentos funcionales y el histórico de Sprints.

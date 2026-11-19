@@ -3,7 +3,7 @@ import { OcrProcessingJob } from "@prisma/client";
 import { Queue } from "bullmq";
 import { OCR_REPOSITORY, OcrRepository } from "./ocr.repository";
 import { OCR_QUEUE } from "./ocr.queue";
-import { OcrAccessDeniedError } from "./ocr-errors";
+import { OcrAccessDeniedError, OcrNotFoundError } from "./ocr-errors";
 import { AuthenticatedUser } from "../../presentation/auth/auth.types";
 import { PrismaService } from "../../infrastructure/prisma/prisma.service";
 import { OcrProviderPort, OCR_PROVIDER } from "./ocr-provider.port";
@@ -34,7 +34,7 @@ export class StartOcrUseCase {
       where: { id: documentId },
       include: { donor: { select: { originatingIpsName: true } } },
     });
-    if (!document) throw new Error("Document not found");
+    if (!document) throw new OcrNotFoundError("Document not found");
     if (
       actor.role !== "ADMIN" &&
       !actor.institutionalIps?.includes(document.donor.originatingIpsName)
@@ -62,13 +62,15 @@ export class StartOcrUseCase {
         },
       );
     } catch (queueErr) {
-      // En modo desarrollo o si Redis no está activo, procesar directamente en memoria
       this.logger.warn(
         `Cola BullMQ no disponible (${
           queueErr instanceof Error ? queueErr.message : "error"
-        }). Procesando extracción directamente.`,
+        }).`,
       );
       if (this.documentUnderstanding && this.storage) {
+        this.logger.warn(
+          "Se ejecutará el fallback local de OCR para el trabajo actual.",
+        );
         await this.processDirectly(
           job.id,
           document.id,
@@ -77,10 +79,17 @@ export class StartOcrUseCase {
           document.mimeType,
           document.processId || undefined,
         );
+      } else {
+        this.logger.error(
+          "No hay fallback local disponible; el trabajo OCR se marcará como FALLIDO.",
+        );
+        await this.repository.failJob(job.id, "OCR_QUEUE_UNAVAILABLE");
       }
     }
 
-    return job;
+    // Return the persisted state: direct fallback may already have completed or failed,
+    // and an unavailable queue without local fallback must not remain EN_COLA.
+    return (await this.repository.findJob(job.id)) ?? job;
   }
 
   private async processDirectly(

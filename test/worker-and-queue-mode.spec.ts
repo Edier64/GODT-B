@@ -95,6 +95,8 @@ describe("Runtime AppMode y prevención de consumidores duplicados", () => {
 
   it("resuelve backend PostgreSQL para BullMQ por defecto con skipMigrations: true", () => {
     const pgConfig = new ConfigService({
+      // Configuración explícita para que el test no dependa de variables del runner CI.
+      BULLMQ_DATABASE_URL: "postgresql://godt:secret@postgres:5432/godt?schema=public",
       DATABASE_URL: "postgresql://godt:secret@postgres:5432/godt?schema=public",
       BULLMQ_PG_SCHEMA: "bullmq",
     });

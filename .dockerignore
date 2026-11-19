@@ -1,4 +1,4 @@
-﻿node_modules
+node_modules
 dist
 *.dump
 .env
@@ -16,6 +16,6 @@ test
 *.e2e.ts
 deploy
 
-docs/*
-!docs/documentos-reales/
-!docs/documentos-reales/**
+# La documentación privada no debe entrar al contexto de construcción Docker.
+# Los documentos institucionales se montan en runtime como volumen de solo lectura.
+docs/
