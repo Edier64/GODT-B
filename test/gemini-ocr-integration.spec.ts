@@ -148,6 +148,42 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       expect(result[0].boundingBox?.rule).toBe("GEMINI_AI_EXTRACTION");
     });
 
+    it("debe enviar la credencial en el header x-goog-api-key y no exponerla en parámetros de URL (?key=)", async () => {
+      const mockConfig = new ConfigService({
+        NODE_ENV: "development",
+        AI_EXTERNAL_PROVIDER_ENABLED: "true",
+        GEMINI_API_KEY: "secret-gemini-key-9999",
+      });
+      const adapter = new GeminiOcrAdapter(mockConfig);
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: JSON.stringify([]) }],
+              },
+            },
+          ],
+        }),
+      });
+
+      await adapter.process({
+        buffer: Buffer.from("dummy"),
+        mimeType: "text/plain",
+      });
+
+      const fetchMock = global.fetch as jest.Mock;
+      expect(fetchMock).toHaveBeenCalled();
+      const [calledUrl, requestInit] = fetchMock.mock.calls[0];
+
+      // Verificación estricta de seguridad
+      expect(calledUrl).not.toContain("?key=");
+      expect(calledUrl).not.toContain("secret-gemini-key-9999");
+      expect(requestInit.headers["x-goog-api-key"]).toBe("secret-gemini-key-9999");
+    });
+
     it("debe descartar candidatos sin evidencia en el texto base (prevención de alucinaciones)", async () => {
       const mockConfig = new ConfigService({
         NODE_ENV: "development",
