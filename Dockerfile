@@ -47,7 +47,7 @@ COPY package.json ./package.json
 COPY prisma ./prisma
 COPY prisma.config.ts ./prisma.config.ts
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-RUN chmod +x /app/docker/entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker/entrypoint.sh && chmod +x /app/docker/entrypoint.sh
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 
@@ -70,11 +70,17 @@ COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 
 # Copiar artefactos compilados (dist/main.js y dist/worker.js)
 COPY --from=build /app/dist ./dist
-# Los documentos institucionales se suministran en ejecución mediante un volumen
-# privado; nunca se incorporan al contexto ni a la imagen Docker.
-# El directorio de montaje (/app/docs/documentos-reales) es compatible con INSTITUTIONAL_TEMPLATES_DIR.
+
+# DECISIÓN TEMPORAL DE ENTREGA:
+# Debido a dificultades técnicas de integración con Azure Blob Storage en esta entrega,
+# se empaquetan temporalmente los formatos institucionales dentro de la imagen Docker
+# en ./docs/documentos-reales (/app/docs/documentos-reales) para garantizar su disponibilidad.
+# Esta configuración es transitoria y compatible con INSTITUTIONAL_TEMPLATES_DIR.
+COPY docs/documentos-reales ./docs/documentos-reales
+
+# Copiar entrypoint ejecutable (LF)
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-RUN chmod +x /app/docker/entrypoint.sh && \
+RUN sed -i 's/\r$//' /app/docker/entrypoint.sh && chmod +x /app/docker/entrypoint.sh && \
   mkdir -p /app/storage /app/docs/documentos-reales && \
   chown -R node:node /app
 
