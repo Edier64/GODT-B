@@ -249,7 +249,9 @@ const TEMPLATE_FILE_MAP: Record<
 
 @Injectable()
 export class InstitutionalDocumentService {
-  private readonly baseDir = path.resolve(process.cwd(), "docs", "documentos-reales");
+  private readonly baseDir = process.env.INSTITUTIONAL_TEMPLATES_DIR
+    ? path.resolve(process.env.INSTITUTIONAL_TEMPLATES_DIR)
+    : path.resolve(process.cwd(), "docs", "documentos-reales");
   private readonly metadataCache = new Map<string, InstitutionalDocumentMetadata>();
 
   /**

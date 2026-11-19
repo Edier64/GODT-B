@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+# Si se pasan argumentos directamente (ej: docker run ... node -e "..."), ejecutarlos directamente
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 APP_MODE="${APP_MODE:-api}"
 
 resolve_entry() {

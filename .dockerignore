@@ -16,6 +16,8 @@ test
 *.e2e.ts
 deploy
 
-# La documentación privada no debe entrar al contexto de construcción Docker.
-# Los documentos institucionales se montan en runtime como volumen de solo lectura.
-docs/
+# Documentación técnica y reportes excluidos del contexto Docker
+docs/*
+# Excepción temporal de entrega: formatos institucionales para disponibilidad en despliegue
+!docs/documentos-reales/
+!docs/documentos-reales/**

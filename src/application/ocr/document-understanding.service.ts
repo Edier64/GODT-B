@@ -14,6 +14,7 @@ export interface DocumentUnderstandingInput {
   sourceDocumentId?: string;
   processId?: string;
   templateCode?: string;
+  rawText?: string;
 }
 
 export interface DocumentUnderstandingOutput {
@@ -39,7 +40,7 @@ export class DocumentUnderstandingService {
 
   async analyze(input: DocumentUnderstandingInput): Promise<DocumentUnderstandingOutput> {
     const { buffer, mimeType } = input;
-    let rawText = "";
+    let rawText = input.rawText || "";
     let strategyUsed: DocumentUnderstandingOutput["strategyUsed"] = "IMAGE_OCR";
     let pagesProcessed = 1;
     let aiCandidates: OcrCandidate[] = [];

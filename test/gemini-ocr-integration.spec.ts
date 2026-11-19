@@ -28,6 +28,28 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       expect(adapterProd.isEnabled()).toBe(false);
     });
 
+    it("debe habilitarse en production si cuenta con aval institucional de procesamiento de datos", () => {
+      const authorizedProdConfig = new ConfigService({
+        NODE_ENV: "production",
+        AI_EXTERNAL_PROVIDER_ENABLED: "true",
+        AI_CLINICAL_DATA_PROCESSING_AUTHORIZED: "true",
+        GEMINI_API_KEY: "dummy-key-for-test",
+      });
+      const adapter = new GeminiOcrAdapter(authorizedProdConfig);
+      expect(adapter.isEnabled()).toBe(true);
+    });
+
+    it("debe habilitarse en production para evaluación sintética controlada", () => {
+      const syntheticProdConfig = new ConfigService({
+        NODE_ENV: "production",
+        AI_EXTERNAL_PROVIDER_ENABLED: "true",
+        AI_SYNTHETIC_DATA_ONLY: "true",
+        GEMINI_API_KEY: "dummy-key-for-test",
+      });
+      const adapter = new GeminiOcrAdapter(syntheticProdConfig);
+      expect(adapter.isEnabled()).toBe(true);
+    });
+
     it("debe permanecer desactivado si AI_EXTERNAL_PROVIDER_ENABLED es false o no está configurado", () => {
       const devConfigOff = new ConfigService({
         NODE_ENV: "development",
@@ -124,6 +146,42 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       expect(result[0].candidateValue).toBe("1020304050");
       expect(result[0].confidenceScore).toBe(0.98);
       expect(result[0].boundingBox?.rule).toBe("GEMINI_AI_EXTRACTION");
+    });
+
+    it("debe enviar la credencial en el header x-goog-api-key y no exponerla en parámetros de URL (?key=)", async () => {
+      const mockConfig = new ConfigService({
+        NODE_ENV: "development",
+        AI_EXTERNAL_PROVIDER_ENABLED: "true",
+        GEMINI_API_KEY: "secret-gemini-key-9999",
+      });
+      const adapter = new GeminiOcrAdapter(mockConfig);
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: JSON.stringify([]) }],
+              },
+            },
+          ],
+        }),
+      });
+
+      await adapter.process({
+        buffer: Buffer.from("dummy"),
+        mimeType: "text/plain",
+      });
+
+      const fetchMock = global.fetch as jest.Mock;
+      expect(fetchMock).toHaveBeenCalled();
+      const [calledUrl, requestInit] = fetchMock.mock.calls[0];
+
+      // Verificación estricta de seguridad
+      expect(calledUrl).not.toContain("?key=");
+      expect(calledUrl).not.toContain("secret-gemini-key-9999");
+      expect(requestInit.headers["x-goog-api-key"]).toBe("secret-gemini-key-9999");
     });
 
     it("debe descartar candidatos sin evidencia en el texto base (prevención de alucinaciones)", async () => {
@@ -270,6 +328,7 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       const result = await docService.analyze({
         buffer: Buffer.from("%PDF-1.7 sintético"),
         mimeType: "application/pdf",
+        rawText,
       });
 
       // Se comprueba que los candidatos locales sobrevivieron al fallo de Gemini

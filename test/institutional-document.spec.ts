@@ -117,4 +117,54 @@ describe("InstitutionalDocumentService & Real PDF Overlay (Fase G.1.3)", () => {
       expect(renderedBytes.length).toBeGreaterThan(1000);
     });
   });
+
+  describe("Resolución de Rutas y Manejo Seguro de Archivos Faltantes (Actividad 2)", () => {
+    const originalEnv = process.env.INSTITUTIONAL_TEMPLATES_DIR;
+
+    afterEach(() => {
+      if (originalEnv) {
+        process.env.INSTITUTIONAL_TEMPLATES_DIR = originalEnv;
+      } else {
+        delete process.env.INSTITUTIONAL_TEMPLATES_DIR;
+      }
+    });
+
+    it("debe resolver la ruta configurada en INSTITUTIONAL_TEMPLATES_DIR y mantener consistencia con el fallback", () => {
+      // Simular configuración de variable de entorno explícita (como en Docker o ACA)
+      process.env.INSTITUTIONAL_TEMPLATES_DIR = "docs/documentos-reales";
+      const customService = new InstitutionalDocumentService();
+      const pathCustom = customService.getOriginalFilePath("anexo_1");
+      expect(pathCustom).toContain("anexo-1-formato-de-valoracion-alerta-posible-donante.pdf");
+
+      // Validar fallback por omisión (process.cwd() + docs/documentos-reales)
+      delete process.env.INSTITUTIONAL_TEMPLATES_DIR;
+      const defaultService = new InstitutionalDocumentService();
+      const pathDefault = defaultService.getOriginalFilePath("anexo_1");
+      expect(pathDefault).toBe(pathCustom);
+    });
+
+    it("debe lanzar NotFoundException sin exponer rutas absolutas internas ante códigos no mapeados", () => {
+      expect(() => service.getOriginalFilePath("FORMATO_DESCONOCIDO_XYZ")).toThrow(
+        "No existe formato institucional mapeado para 'FORMATO_DESCONOCIDO_XYZ'",
+      );
+    });
+
+    it("debe lanzar NotFoundException informando únicamente el nombre de archivo sin revelar rutas de servidor cuando falta el archivo físico", () => {
+      // Apuntar temporalmente a un directorio vacío para forzar NotFound de archivo físico
+      process.env.INSTITUTIONAL_TEMPLATES_DIR = "src";
+      const missingService = new InstitutionalDocumentService();
+
+      try {
+        missingService.getOriginalFilePath("anexo_1");
+        fail("Debería haber lanzado NotFoundException");
+      } catch (err: any) {
+        expect(err.name).toBe("NotFoundException");
+        expect(err.message).toBe("Archivo físico no encontrado en disco: 'anexo-1-formato-de-valoracion-alerta-posible-donante.pdf'");
+        // Verificación de seguridad: no revela la ruta interna del sistema operativo ni directorios padre
+        expect(err.message).not.toContain("C:\\");
+        expect(err.message).not.toContain("/app/");
+        expect(err.message).not.toContain("src");
+      }
+    });
+  });
 });
