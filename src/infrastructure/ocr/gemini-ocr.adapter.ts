@@ -83,12 +83,14 @@ export class GeminiOcrAdapter implements OcrProviderPort {
     }
 
     const apiKey = this.config.get<string>("GEMINI_API_KEY");
-    const configuredModel = this.config.get<string>("GEMINI_MODEL", "gemini-3.5-flash");
+    const configuredModel = this.config.get<string>("GEMINI_MODEL", "gemini-3.5-flash-lite");
 
     // Lista de modelos ordenados por prioridad; si el configurado experimenta alta demanda (503/timeout), conmutar ordenadamente
     const candidateModels: string[] = [configuredModel];
-    if (configuredModel !== "gemini-3.5-flash") {
-      candidateModels.push("gemini-3.5-flash");
+    for (const m of ["gemini-3.5-flash-lite", "gemini-3.8-flash"]) {
+      if (!candidateModels.includes(m)) {
+        candidateModels.push(m);
+      }
     }
 
     // Normalizar imágenes (.bmp, .tiff, .png, .jpg, .webp) para compatibilidad nativa multimodal
@@ -132,11 +134,38 @@ DICCIONARIO CANÓNICO AUTORIZADO (utiliza exclusivamente estas claves si están 
 - donor.demographics.age (ej: "26")
 - donor.demographics.sex (ej: "MASCULINO", "FEMENINO")
 - donor.institution.originating_ips (nombre del hospital/clínica generadora)
-- donor.clinical.clinical_service (ej: "UCI ADULTOS", "URGENCIAS", "01- Consulta externa")
-- donor.clinical.cause_of_death (causa médica de defunción si el paciente está fallecido)
-- donor.clinical.creatinine (ej: "1.2")
-- donor.clinical.arterial_ph (ej: "7.35")
+- donor.clinical.clinical_service (ej: "UCI ADULTOS", "URGENCIAS")
+- donor.clinical.cause_of_death (causa médica de defunción o diagnóstico principal)
 - donor.registration.rnd_code (código RND del donante)
+- donor.clinical.creatinine (Creatinina sérica en mg/dL, ej: "1.8")
+- donor.clinical.arterial_ph (pH arterial en sangre, ej: "7.35")
+- donor.clinical.labs.hemoglobin (Hemoglobina Hb en g/dL, ej: "10.5")
+- donor.clinical.labs.hematocrit (Hematocrito Hto en %, ej: "32.0")
+- donor.clinical.labs.leukocytes (Recuento de leucocitos, ej: "15000")
+- donor.clinical.labs.platelets (Recuento de plaquetas, ej: "245000")
+- donor.clinical.labs.sodium (Sodio sérico Na en mEq/L, ej: "138")
+- donor.clinical.labs.potassium (Potasio sérico K en mEq/L, ej: "4.2")
+- donor.clinical.labs.inr (INR de coagulación, ej: "1.3")
+- donor.clinical.labs.bun (Nitrógeno ureico BUN en mg/dL, ej: "18.5")
+- donor.clinical.labs.alt_gpt (ALT / GPT transaminasa en U/L, ej: "35")
+- donor.clinical.labs.ast_got (AST / GOT transaminasa en U/L, ej: "40")
+- donor.clinical.labs.total_bilirubin (Bilirrubina total en mg/dL, ej: "0.9")
+- donor.clinical.labs.glycemia (Glicemia en mg/dL, ej: "110")
+- donor.clinical.labs.lactate (Lactato sérico en mmol/L, ej: "1.6")
+- donor.clinical.vitals.systolic_bp (Tensión arterial sistólica mmHg, ej: "120")
+- donor.clinical.vitals.diastolic_bp (Tensión arterial diastólica mmHg, ej: "80")
+- donor.clinical.vitals.heart_rate (Frecuencia cardíaca lpm, ej: "82")
+- donor.clinical.vitals.respiratory_rate (Frecuencia respiratoria rpm, ej: "16")
+- donor.clinical.vitals.temperature (Temperatura corporal en °C, ej: "36.8")
+- donor.clinical.vitals.spo2 (Saturación SpO2 %, ej: "98")
+- donor.clinical.vitals.diuresis_rate (Gasto urinario cc/hora, ej: "60")
+- donor.clinical.vitals.weight_kg (Peso corporal en kg, ej: "70")
+- donor.clinical.vitals.height_cm (Talla en cm, ej: "172")
+
+REGLAS DE LABORATORIOS Y PARACLÍNICOS:
+- Si existen múltiples mediciones en el tiempo, extrae la más reciente del documento.
+- Extrae el valor numérico limpio o formateado sin símbolos espurios.
+- Si se detecta fecha o unidad, inclúyela en el snippet de evidencia.
 
 RESPUESTA:
 Devuelve ÚNICAMENTE un array JSON válido sin texto adicional ni bloques markdown de código envolventes.
@@ -172,7 +201,7 @@ Cada elemento del array debe tener:
 
     // Intentar invocación con reintentos y backoff limitado
     for (const model of candidateModels) {
-      const maxRetries = 2;
+      const maxRetries = 1;
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
           const response = await fetch(
@@ -198,7 +227,7 @@ Cada elemento del array debe tener:
             const errorBody = await response.text().catch(() => "");
             const isTransient = response.status === 429 || response.status === 503;
             if (isTransient && attempt < maxRetries) {
-              const backoffMs = 500 * Math.pow(2, attempt);
+              const backoffMs = 200 * Math.pow(2, attempt);
               this.logger.warn(
                 `Gemini API HTTP ${response.status} en modelo ${model}. Reintentando en ${backoffMs}ms (intento ${attempt + 1}/${maxRetries})...`,
               );
@@ -304,8 +333,14 @@ Cada elemento del array debe tener:
           return validatedCandidates;
         } catch (err) {
           lastError = err instanceof Error ? err : new Error(String(err));
+          if (
+            lastError.message.includes("invalid JSON") ||
+            lastError.message.includes("must be an array")
+          ) {
+            break;
+          }
           if (attempt < maxRetries) {
-            const backoffMs = 500 * Math.pow(2, attempt);
+            const backoffMs = 200 * Math.pow(2, attempt);
             await new Promise((resolve) => setTimeout(resolve, backoffMs));
           }
         }

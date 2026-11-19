@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { OcrCandidate, OCR_PROVIDER, OcrProviderPort } from "./ocr-provider.port";
+import { OcrCandidate, OCR_PROVIDER } from "./ocr-provider.port";
 import { LocalRulesExtractionProvider } from "./local-rules-extraction.provider";
 import { extractTextFromDocx } from "./docx-extractor";
 import { extractTextLayerFromPdf } from "./pdf-text-layer-extractor";
@@ -32,7 +32,7 @@ export class DocumentUnderstandingService {
   constructor(
     private readonly config: ConfigService,
     private readonly localRules: LocalRulesExtractionProvider,
-    @Optional() @Inject(OCR_PROVIDER) private readonly fallbackOcrProvider?: OcrProviderPort,
+    @Optional() @Inject(OCR_PROVIDER) _legacyOcrProvider?: unknown,
     @Optional() @Inject(PDF_RASTERIZER) private readonly rasterizer?: PdfRasterizerPort,
     @Optional() @Inject(FILE_STORAGE_PORT) private readonly storage?: FileStoragePort,
     @Optional() private readonly geminiAdapter?: GeminiOcrAdapter,
@@ -128,22 +128,23 @@ export class DocumentUnderstandingService {
         aiFailed = true;
         aiFailureReason = geminiError instanceof Error ? geminiError.message : "Error desconocido";
         this.logger.warn(
-          `Extracción con IA multimodal no disponible (${aiFailureReason}). Aplicando mecanismo de respaldo secundario (Tesseract/Reglas locales).`,
+          `Extracción con IA multimodal no disponible (${aiFailureReason}).`,
         );
       }
     } else {
       aiFailed = true;
       aiFailureReason = "Proveedor de IA multimodal deshabilitado o no configurado";
-      this.logger.log(
-        `IA multimodal no activa (${aiFailureReason}). Utilizando mecanismo de procesamiento local.`,
+      this.logger.warn(
+        `IA multimodal no activa (${aiFailureReason}).`,
       );
     }
 
     // =========================================================================
-    // 5. MECANISMO SECUNDARIO DE RESPALDO (Fallback si IA falló o campos faltantes)
+    // 5. EXTRACCIÓN SECUNDARIA EXCLUSIVA PARA TEXTO DIGITAL (DOCX / PDF DIGITAL)
+    //    Gemini OCR es el único motor OCR. Tesseract ha sido eliminado del flujo.
     // =========================================================================
     if (aiCandidates.length === 0 || aiFailed) {
-      // 5.1 Si contamos con texto extraído (PDF digital o DOCX), usar reglas clínicas locales
+      // Si contamos con texto digital extraído (PDF digital o DOCX), usar reglas clínicas locales
       if (rawText && rawText.trim().length > 0) {
         const localRuleCandidates = this.localRules.extract(rawText, {
           pageNumber: 1,
@@ -161,31 +162,11 @@ export class DocumentUnderstandingService {
             },
           });
         }
-      }
-
-      // 5.2 Para imágenes o PDFs escaneados donde no hay texto digital, invocar OCR local secundario si existe
-      if (isImage || strategyUsed === "PDF_SCANNED") {
-        if (this.fallbackOcrProvider) {
-          try {
-            const ocrRes = await this.fallbackOcrProvider.process({ buffer, mimeType });
-            for (const cand of ocrRes) {
-              fallbackCandidates.push({
-                ...cand,
-                boundingBox: {
-                  ...(cand.boundingBox || {}),
-                  engine: "LOCAL_OCR_FALLBACK",
-                  provider: this.fallbackOcrProvider.name,
-                  isFallback: true,
-                  fallbackReason: aiFailureReason,
-                },
-              });
-            }
-          } catch (ocrErr) {
-            this.logger.warn(
-              `Fallback OCR local también no disponible: ${ocrErr instanceof Error ? ocrErr.message : "Error"}`,
-            );
-          }
-        }
+      } else {
+        // En imágenes o PDFs escaneados donde se requiere OCR y Gemini falló:
+        this.logger.error(
+          `Extracción OCR requerida para documento escaneado/imagen, pero Gemini no estuvo disponible (${aiFailureReason}). Tesseract está deshabilitado.`,
+        );
       }
     }
 
@@ -194,7 +175,7 @@ export class DocumentUnderstandingService {
     // =========================================================================
     const candidateMap = new Map<string, OcrCandidate>();
 
-    // Primero incorporar los del mecanismo de respaldo
+    // Primero incorporar los del mecanismo de respaldo (si aplica para texto digital)
     for (const cand of fallbackCandidates) {
       candidateMap.set(cand.canonicalFieldKey, cand);
     }
@@ -207,6 +188,11 @@ export class DocumentUnderstandingService {
     const finalCandidates = Array.from(candidateMap.values());
     const primaryEngineUsed: DocumentUnderstandingOutput["primaryEngineUsed"] =
       aiCandidates.length > 0 ? "GEMINI_AI" : "LOCAL_FALLBACK";
+
+    // Si la extracción de IA falló y no hay candidatos de texto digital, lanzar error para registrar fallo reintentable
+    if (aiFailed && finalCandidates.length === 0 && (isImage || strategyUsed === "PDF_SCANNED")) {
+      throw new Error(`Extracción OCR con Gemini no disponible: ${aiFailureReason}`);
+    }
 
     return {
       rawText,

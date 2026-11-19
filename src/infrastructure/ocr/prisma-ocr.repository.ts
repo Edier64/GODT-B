@@ -146,14 +146,28 @@ export class PrismaOcrRepository implements OcrRepository {
         !Array.isArray(donor.clinicalData)
           ? (donor.clinicalData as Record<string, unknown>)
           : {};
-      if (clinicalData[field.canonicalFieldKey] !== undefined)
-        throw new OcrValidationError("Clinical field already has a value");
       const value =
         field.validationStatus === "MODIFICADO"
           ? field.confirmedValue
           : field.candidateValue;
       if (value === null || value === undefined)
         throw new OcrValidationError("Validated value is missing");
+
+      const existingValue = clinicalData[field.canonicalFieldKey];
+      // Idempotencia: si el registro ya contiene exactamente este valor, retornar sin error
+      if (existingValue !== undefined && String(existingValue) === String(value)) {
+        return field;
+      }
+
+      // Si el campo ya tiene un valor diferente, permitir actualización solo si el usuario
+      // lo validó explícitamente como MODIFICADO
+      if (existingValue !== undefined && existingValue !== value) {
+        if (field.validationStatus !== "MODIFICADO") {
+          throw new OcrValidationError(
+            `El campo ${field.canonicalFieldKey} ya contiene un valor registrado ("${existingValue}"). Modifique el valor en revisión si desea actualizarlo.`,
+          );
+        }
+      }
       await transaction.donorRecord.update({
         where: { id: field.donorId },
         data: {

@@ -301,7 +301,7 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
       const docService = new DocumentUnderstandingService(
         mockConfig,
         localRules,
-        undefined, // sin OCR secundario
+        undefined,
         undefined,
         undefined,
         failingGeminiAdapter,
@@ -353,7 +353,7 @@ describe("Gemini OCR / IA Integration & Governance Suite (Fase G.1.1)", () => {
           NODE_ENV: "development",
           AI_EXTERNAL_PROVIDER_ENABLED: "true",
           GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-          GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+          GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
         });
 
         const adapter = new GeminiOcrAdapter(config);

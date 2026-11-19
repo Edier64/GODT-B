@@ -11,7 +11,6 @@ import { OCR_QUEUE, OCR_QUEUE_NAME } from "../../application/ocr/ocr.queue";
 import { OCR_REPOSITORY } from "../../application/ocr/ocr.repository";
 import { PrismaOcrRepository } from "../../infrastructure/ocr/prisma-ocr.repository";
 import { GeminiOcrAdapter } from "../../infrastructure/ocr/gemini-ocr.adapter";
-import { TesseractOcrAdapter } from "../../infrastructure/ocr/tesseract-ocr.adapter";
 import { LocalPdfRasterizerAdapter } from "../../infrastructure/ocr/local-pdf-rasterizer.adapter";
 import { OcrWorker } from "../../infrastructure/ocr/ocr-worker";
 import { StartOcrUseCase } from "../../application/ocr/start-ocr.use-case";
@@ -33,7 +32,6 @@ import { createBullmqQueue } from "../../infrastructure/runtime/bullmq-backend";
   providers: [
     PrismaOcrRepository,
     GeminiOcrAdapter,
-    TesseractOcrAdapter,
     LocalPdfRasterizerAdapter,
     LocalRulesExtractionProvider,
     DocumentUnderstandingService,
@@ -44,15 +42,7 @@ import { createBullmqQueue } from "../../infrastructure/runtime/bullmq-backend";
     { provide: PDF_RASTERIZER, useExisting: LocalPdfRasterizerAdapter },
     {
       provide: OCR_PROVIDER,
-      inject: [ConfigService, GeminiOcrAdapter, TesseractOcrAdapter],
-      useFactory: (
-        config: ConfigService,
-        gemini: GeminiOcrAdapter,
-        tesseract: TesseractOcrAdapter,
-      ) =>
-        config.get("OCR_PROVIDER", "tesseract") === "gemini"
-          ? gemini
-          : tesseract,
+      useExisting: GeminiOcrAdapter,
     },
     {
       provide: OCR_QUEUE,

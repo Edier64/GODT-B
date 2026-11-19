@@ -1,7 +1,7 @@
 import { Injectable, Optional } from "@nestjs/common";
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from "pdf-lib";
 import { InstitutionalDocumentService } from "./institutional-document.service";
-import { INSTITUTIONAL_OVERLAYS, drawTextWrapped } from "./institutional-coordinates";
+import { INSTITUTIONAL_OVERLAYS, drawTextWrapped, drawTextContained } from "./institutional-coordinates";
 
 export interface PdfRenderInput {
   documentCode: string;
@@ -70,6 +70,7 @@ export class PdfRenderEngineService {
         // Estampar campos diligenciados sobre las coordenadas correspondientes
         const overlays = INSTITUTIONAL_OVERLAYS[normalizedKey] || [];
         const pages = pdfDoc.getPages();
+        const overflowFields: Array<{ title: string; text: string }> = [];
 
         for (const field of overlays) {
           if (field.pageIndex < pages.length) {
@@ -78,12 +79,32 @@ export class PdfRenderEngineService {
             if (rawVal !== undefined && rawVal !== null && rawVal !== "") {
               const text = String(rawVal);
               const fontSize = field.fontSize || 8.5;
+              const minFontSize = field.minFontSize || 6;
               const font = field.isBold ? fontBold : fontRegular;
               const color = field.color
                 ? rgb(field.color.r, field.color.g, field.color.b)
                 : rgb(0.06, 0.16, 0.26);
 
-              if (field.maxWidth) {
+              if (field.drawBox) {
+                if (rawVal === true || rawVal === "true" || rawVal === "X" || rawVal === 1) {
+                  page.drawRectangle({
+                    x: field.x,
+                    y: field.y,
+                    width: field.maxWidth || 20,
+                    height: field.maxHeight || 13,
+                    borderColor: color,
+                    borderWidth: 1.2,
+                  });
+                }
+              } else if (field.maxWidth && field.maxHeight) {
+                const res = drawTextContained(page, text, field.x, field.y, font, fontSize, field.maxWidth, field.maxHeight, color, minFontSize);
+                if (res.overflow) {
+                  overflowFields.push({
+                    title: field.fieldName || "Detalle clínico adicional",
+                    text,
+                  });
+                }
+              } else if (field.maxWidth) {
                 drawTextWrapped(page, text, field.x, field.y, font, fontSize, field.maxWidth, color);
               } else {
                 page.drawText(text, { x: field.x, y: field.y, size: fontSize, font, color });
@@ -92,8 +113,16 @@ export class PdfRenderEngineService {
           }
         }
 
+        // Si existen medicamentos más allá de las 6 filas oficiales o campos desbordados en Anexo 1, generar Hoja de Continuación
+        const rawMeds = (input.data.medicamentos as any[]) || [];
+        const extraMeds = Array.isArray(rawMeds) && rawMeds.length > 6 ? rawMeds.slice(6) : [];
+        if (normalizedKey === "anexo_1" && (extraMeds.length > 0 || overflowFields.length > 0)) {
+          this.renderAnexo1ContinuationPage(pdfDoc, input, extraMeds, overflowFields, fontRegular, fontBold);
+        }
+
         // Trazabilidad operacional al pie de la última página
-        const lastPage = pages[pages.length - 1];
+        const allPages = pdfDoc.getPages();
+        const lastPage = allPages[allPages.length - 1];
         const statusLabel = input.metadata.revisionNumber ? `Rev #${input.metadata.revisionNumber}` : "Borrador";
         const digestShort = input.metadata.snapshotDigest ? input.metadata.snapshotDigest.slice(0, 16) : "OFICIAL";
         const effectiveIps =
@@ -213,6 +242,204 @@ export class PdfRenderEngineService {
 
     const pdfBytes = await pdfDoc.save();
     return Buffer.from(pdfBytes);
+  }
+
+  // -------------------------------------------------------------
+  // Hoja Anexa de Continuación Oficial (Anexo 1)
+  // -------------------------------------------------------------
+  private renderAnexo1ContinuationPage(
+    pdfDoc: PDFDocument,
+    input: PdfRenderInput,
+    extraMeds: any[],
+    overflowFields: Array<{ title: string; text: string }>,
+    regular: PDFFont,
+    bold: PDFFont,
+  ): void {
+    const page = pdfDoc.addPage([612, 1008]);
+    const { width, height } = page.getSize();
+    let y = 940;
+
+    // Marco exterior institucional
+    page.drawRectangle({
+      x: 35,
+      y: 35,
+      width: width - 70,
+      height: height - 70,
+      borderColor: rgb(0.12, 0.28, 0.42),
+      borderWidth: 1.2,
+    });
+
+    // Encabezado institucional
+    page.drawRectangle({
+      x: 35,
+      y: 915,
+      width: width - 70,
+      height: 58,
+      color: rgb(0.93, 0.96, 0.98),
+      borderColor: rgb(0.12, 0.28, 0.42),
+      borderWidth: 1,
+    });
+
+    page.drawText("REDES EN SALUD PÚBLICA — SISTEMA GODT REGIONAL 3", {
+      x: 50,
+      y: 952,
+      size: 11,
+      font: bold,
+      color: rgb(0.08, 0.2, 0.35),
+    });
+    page.drawText("ANEXO 1 — HOJA ANEXA DE CONTINUACIÓN CLÍNICA Y FARMACOLÓGICA", {
+      x: 50,
+      y: 935,
+      size: 9.5,
+      font: bold,
+      color: rgb(0.08, 0.55, 0.5),
+    });
+    page.drawText("Página 3 de 3 · Hoja Complementaria Oficial", {
+      x: 380,
+      y: 935,
+      size: 8.5,
+      font: regular,
+      color: rgb(0.3, 0.4, 0.5),
+    });
+
+    // Caja de identificación del expediente
+    y = 895;
+    page.drawRectangle({
+      x: 45,
+      y: y - 35,
+      width: width - 90,
+      height: 45,
+      color: rgb(0.98, 0.99, 1),
+      borderColor: rgb(0.8, 0.85, 0.9),
+      borderWidth: 0.8,
+    });
+
+    const meta = input.metadata;
+    const d = input.data as any;
+    const donorName = d.nombreDonante || meta.donorName || "N/A";
+    const donorDoc = `${d.tipoIdentificacion || "CC"} ${d.numeroIdentificacion || meta.donorDocument || "N/A"}`;
+    const rndStr = d.codigoRnd || meta.rndCode || "Pendiente";
+    const ipsStr = d.ipsGeneradora || meta.primaryIpsName || "IPS Regional 3";
+
+    page.drawText(`Proceso: ${meta.processCode}    |    Consulta RND: ${rndStr}    |    IPS: ${ipsStr}`, {
+      x: 55,
+      y: y - 12,
+      size: 8,
+      font: bold,
+      color: rgb(0.1, 0.2, 0.3),
+    });
+    page.drawText(`Paciente Donante: ${donorName}    |    Identificación: ${donorDoc}`, {
+      x: 55,
+      y: y - 26,
+      size: 8,
+      font: regular,
+      color: rgb(0.15, 0.25, 0.35),
+    });
+
+    y -= 55;
+
+    // Tabla de Medicamentos Adicionales si existen > 6
+    if (extraMeds.length > 0) {
+      page.drawText("1. MEDICAMENTOS ADMINISTRADOS ADICIONALES (Continuación desde fila 7)", {
+        x: 45,
+        y,
+        size: 9,
+        font: bold,
+        color: rgb(0.08, 0.25, 0.4),
+      });
+      y -= 16;
+
+      page.drawRectangle({
+        x: 45,
+        y: y - 14,
+        width: width - 90,
+        height: 18,
+        color: rgb(0.88, 0.93, 0.96),
+        borderColor: rgb(0.7, 0.8, 0.88),
+        borderWidth: 0.6,
+      });
+
+      page.drawText("#", { x: 50, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      page.drawText("Medicamento", { x: 70, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      page.drawText("Dosis Actual", { x: 210, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      page.drawText("Inicio", { x: 310, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      page.drawText("Fin", { x: 405, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      page.drawText("Dosis Máxima", { x: 485, y: y - 10, size: 7.5, font: bold, color: rgb(0.1, 0.2, 0.3) });
+      y -= 16;
+
+      for (let i = 0; i < extraMeds.length; i++) {
+        const med = extraMeds[i];
+        const rowBg = i % 2 === 0 ? rgb(1, 1, 1) : rgb(0.97, 0.98, 0.99);
+        page.drawRectangle({
+          x: 45,
+          y: y - 12,
+          width: width - 90,
+          height: 15,
+          color: rowBg,
+          borderColor: rgb(0.85, 0.88, 0.92),
+          borderWidth: 0.5,
+        });
+
+        page.drawText(String(i + 7) + ".", { x: 50, y: y - 9, size: 7.5, font: regular, color: rgb(0.2, 0.25, 0.3) });
+        page.drawText(String(med?.nombre || "—").substring(0, 32), { x: 70, y: y - 9, size: 7.5, font: bold, color: rgb(0.1, 0.15, 0.2) });
+        page.drawText(String(med?.dosisActual || "—").substring(0, 22), { x: 210, y: y - 9, size: 7.5, font: regular, color: rgb(0.2, 0.25, 0.3) });
+        page.drawText(String(med?.fechaInicio || "—").substring(0, 18), { x: 310, y: y - 9, size: 7.5, font: regular, color: rgb(0.2, 0.25, 0.3) });
+        page.drawText(String(med?.fechaFin || "—").substring(0, 15), { x: 405, y: y - 9, size: 7.5, font: regular, color: rgb(0.2, 0.25, 0.3) });
+        page.drawText(String(med?.dosisMaxima || "—").substring(0, 15), { x: 485, y: y - 9, size: 7.5, font: regular, color: rgb(0.2, 0.25, 0.3) });
+        y -= 15;
+      }
+      y -= 15;
+    }
+
+    // Secciones de texto clínico desbordado
+    if (overflowFields.length > 0) {
+      page.drawText("2. EXTENSIÓN COMPLETA DE DIAGNÓSTICOS, ANTECEDENTES Y OBSERVACIONES", {
+        x: 45,
+        y,
+        size: 9,
+        font: bold,
+        color: rgb(0.08, 0.25, 0.4),
+      });
+      y -= 16;
+
+      for (const item of overflowFields) {
+        if (y < 180) break;
+        page.drawText(`■ ${item.title}:`, {
+          x: 50,
+          y,
+          size: 8,
+          font: bold,
+          color: rgb(0.12, 0.22, 0.32),
+        });
+        y -= 12;
+
+        const drawnEndY = drawTextWrapped(page, item.text, 55, y, regular, 7.5, width - 110, rgb(0.15, 0.2, 0.25));
+        y = drawnEndY - 10;
+      }
+    }
+
+    // Nota de custodia y firmas al pie
+    const sigY = 120;
+    page.drawLine({
+      start: { x: 180, y: sigY },
+      end: { x: 430, y: sigY },
+      color: rgb(0.3, 0.4, 0.5),
+      thickness: 1,
+    });
+    page.drawText("Firma y Sello del Médico Coordinador de Donación y Trasplantes", {
+      x: 185,
+      y: sigY - 12,
+      size: 7.5,
+      font: bold,
+      color: rgb(0.2, 0.3, 0.4),
+    });
+    page.drawText(meta.generatedByName || "Médico Coordinador Regional 3", {
+      x: 220,
+      y: sigY - 22,
+      size: 7,
+      font: regular,
+      color: rgb(0.3, 0.35, 0.4),
+    });
   }
 
   // -------------------------------------------------------------

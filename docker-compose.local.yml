@@ -98,10 +98,10 @@ services:
       AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-godt-documents}
-      OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
-      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-false}
+      OCR_PROVIDER: ${OCR_PROVIDER:-gemini}
+      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-true}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     volumes:
       - godt-storage:/app/storage
       # Documentos institucionales locales, externos al repositorio e imagen.
@@ -144,12 +144,12 @@ services:
       AZURE_STORAGE_ACCOUNT_URL: ${AZURE_STORAGE_ACCOUNT_URL:-}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-}
       AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-godt-documents}
-      OCR_PROVIDER: ${OCR_PROVIDER:-tesseract}
+      OCR_PROVIDER: ${OCR_PROVIDER:-gemini}
       OCR_CONCURRENCY: ${OCR_CONCURRENCY:-1}
       DOSSIER_CONCURRENCY: ${DOSSIER_CONCURRENCY:-2}
-      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-false}
+      AI_EXTERNAL_PROVIDER_ENABLED: ${AI_EXTERNAL_PROVIDER_ENABLED:-true}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
     volumes:
       - godt-storage:/app/storage
       # El worker también requiere acceso de solo lectura a las plantillas originales.

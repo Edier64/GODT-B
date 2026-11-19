@@ -179,44 +179,117 @@ export class OcrWorkflowUseCase {
     }>,
     actor: AuthenticatedUser,
   ) {
-    const results = [];
+    const results: Array<{
+      fieldId: string;
+      canonicalFieldKey: string;
+      status: "PROPAGADO" | "OMITIDO" | "RECHAZADO" | "FALLIDO";
+      reason?: string;
+      result?: unknown;
+    }> = [];
+
+    let propagatedCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
     for (const item of items) {
-      if (item.status === "RECHAZADO") {
-        const validated = await this.validate(
+      let fieldKey = item.fieldId;
+      try {
+        const field = await this.prisma.ocrExtractedField.findUnique({
+          where: { id: item.fieldId },
+          select: {
+            canonicalFieldKey: true,
+            validationStatus: true,
+            candidateValue: true,
+            confirmedValue: true,
+          },
+        });
+        if (field) {
+          fieldKey = field.canonicalFieldKey;
+        }
+
+        if (item.status === "RECHAZADO") {
+          let validated: unknown = null;
+          if (!field || field.validationStatus !== "RECHAZADO") {
+            validated = await this.validate(
+              item.fieldId,
+              { status: "RECHAZADO" },
+              actor,
+            );
+          }
+          results.push({
+            fieldId: item.fieldId,
+            canonicalFieldKey: fieldKey,
+            status: "RECHAZADO",
+            reason: "Campo descartado por el usuario en revisión",
+            result: validated,
+          });
+          continue;
+        }
+
+        // 1. Validar el campo con su estado y valor confirmado/modificado únicamente si no fue validado previamente con idéntico valor
+        const alreadyValidated =
+          field &&
+          field.validationStatus === item.status &&
+          (item.status !== "MODIFICADO" || field.confirmedValue === item.confirmedValue);
+
+        if (!alreadyValidated) {
+          if (item.status === "MODIFICADO") {
+            await this.validate(
+              item.fieldId,
+              { status: "MODIFICADO", confirmedValue: item.confirmedValue },
+              actor,
+            );
+          } else {
+            await this.validate(item.fieldId, { status: "CONFIRMADO" }, actor);
+          }
+        }
+
+        // 2. Propagar al proceso y registro canónico
+        const propagated = await this.propagateToProcess(
+          processId,
           item.fieldId,
-          { status: "RECHAZADO" },
           actor,
         );
+
+        propagatedCount++;
         results.push({
           fieldId: item.fieldId,
-          status: "RECHAZADO",
-          result: validated,
+          canonicalFieldKey: fieldKey,
+          status: "PROPAGADO",
+          result: propagated,
         });
-        continue;
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (
+          errMsg.includes("ya contiene") ||
+          errMsg.includes("already has a value")
+        ) {
+          skippedCount++;
+          results.push({
+            fieldId: item.fieldId,
+            canonicalFieldKey: fieldKey,
+            status: "OMITIDO",
+            reason: errMsg,
+          });
+        } else {
+          failedCount++;
+          results.push({
+            fieldId: item.fieldId,
+            canonicalFieldKey: fieldKey,
+            status: "FALLIDO",
+            reason: errMsg,
+          });
+        }
       }
-
-      if (item.status === "MODIFICADO") {
-        await this.validate(
-          item.fieldId,
-          { status: "MODIFICADO", confirmedValue: item.confirmedValue },
-          actor,
-        );
-      } else {
-        await this.validate(item.fieldId, { status: "CONFIRMADO" }, actor);
-      }
-
-      const propagated = await this.propagateToProcess(
-        processId,
-        item.fieldId,
-        actor,
-      );
-      results.push({
-        fieldId: item.fieldId,
-        status: item.status,
-        result: propagated,
-      });
     }
-    return results;
+
+    return {
+      total: items.length,
+      propagatedCount,
+      skippedCount,
+      failedCount,
+      results,
+    };
   }
 
   private async assertAccess(documentId: string, actor: AuthenticatedUser) {

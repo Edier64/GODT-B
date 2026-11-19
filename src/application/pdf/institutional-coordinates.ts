@@ -8,8 +8,115 @@ export interface FieldCoordinate {
   fontSize?: number;
   isBold?: boolean;
   maxWidth?: number;
+  maxHeight?: number;
+  minFontSize?: number;
+  drawBox?: boolean;
+  fieldName?: string;
   color?: { r: number; g: number; b: number };
-  getValue: (data: Record<string, any>, metadata: PdfRenderInput["metadata"]) => string | boolean | undefined;
+  getValue: (data: Record<string, any>, metadata: PdfRenderInput["metadata"]) => any;
+}
+
+export interface TextContainedResult {
+  overflow: boolean;
+  remainingText: string;
+}
+
+export function drawTextContained(
+  page: PDFPage,
+  text: string,
+  x: number,
+  y: number,
+  font: PDFFont,
+  fontSize: number,
+  maxWidth: number,
+  maxHeight: number,
+  color: any,
+  minFontSize: number = 6,
+): TextContainedResult {
+  if (!text) return { overflow: false, remainingText: "" };
+
+  const cleanText = String(text).trim();
+  const words = cleanText.split(/\s+/);
+
+  let currentFontSize = fontSize;
+  let bestLines: string[] = [];
+  let lineHeight = currentFontSize * 1.15;
+
+  while (currentFontSize >= minFontSize) {
+    lineHeight = currentFontSize * 1.15;
+    const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = font.widthOfTextAtSize(testLine, currentFontSize);
+      if (testWidth > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    if (lines.length <= maxLines) {
+      bestLines = lines;
+      break;
+    }
+
+    currentFontSize -= 0.5;
+  }
+
+  let isOverflow = false;
+  let remainingText = "";
+
+  if (bestLines.length === 0) {
+    currentFontSize = minFontSize;
+    lineHeight = currentFontSize * 1.15;
+    const maxAllowedLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = font.widthOfTextAtSize(testLine, currentFontSize);
+      if (testWidth > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+
+    if (lines.length > maxAllowedLines) {
+      isOverflow = true;
+      const visibleLines = lines.slice(0, maxAllowedLines);
+      const last = visibleLines[visibleLines.length - 1];
+      visibleLines[visibleLines.length - 1] = last.length > 3 ? last.slice(0, -3) + "..." : last + "...";
+      bestLines = visibleLines;
+      remainingText = lines.slice(maxAllowedLines).join(" ");
+    } else {
+      bestLines = lines;
+    }
+  }
+
+  let drawY = y;
+  for (const line of bestLines) {
+    page.drawText(line, {
+      x,
+      y: drawY,
+      size: currentFontSize,
+      font,
+      color,
+    });
+    drawY -= lineHeight;
+  }
+
+  return { overflow: isOverflow, remainingText };
 }
 
 export function drawTextWrapped(
@@ -52,143 +159,1421 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
   // (2 Páginas: 612 x 1008)
   // -------------------------------------------------------------
   anexo_1: [
-    // Encabezado / IPS
+    // === PÁGINA 1: IDENTIFICACIÓN, DONANTE, DIAGNÓSTICO, ANTECEDENTES, EXAMEN FÍSICO Y MONITOREO ===
+    // Encabezado institucional / Consulta RND
     {
       pageIndex: 0,
-      x: 135,
-      y: 915,
-      fontSize: 9,
+      x: 168,
+      y: 877,
+      maxWidth: 56,
+      maxHeight: 11,
+      fontSize: 7,
+      minFontSize: 5,
       isBold: true,
-      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName || "IPS Regional 3",
+      fieldName: "Código / Consulta RND",
+      getValue: (d, meta) => d.codigoRnd || d.codigoConsultaRnd || d.rndCode || meta.rndCode || "",
+    },
+    {
+      pageIndex: 0,
+      x: 440,
+      y: 877,
+      fontSize: 8.5,
+      fieldName: "Fecha Notificación Alerta",
+      getValue: (d, meta) => d.fechaNotificacion || d.fechaAlerta || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 535,
+      y: 877,
+      fontSize: 8.5,
+      fieldName: "Hora Notificación Alerta",
+      getValue: (d) => d.horaNotificacion || d.horaAlerta || "",
+    },
+    {
+      pageIndex: 0,
+      x: 175,
+      y: 843,
+      maxWidth: 145,
+      fontSize: 8,
+      isBold: true,
+      fieldName: "Médico Coordinador a Cargo",
+      getValue: (d, meta) => d.medicoCoordinador || meta.generatedByName || "Médico Coordinador Regional 3",
     },
     {
       pageIndex: 0,
       x: 430,
-      y: 915,
-      fontSize: 8.5,
+      y: 843,
+      maxWidth: 140,
+      fontSize: 8,
       isBold: true,
-      getValue: (_, meta) => meta.processCode,
+      fieldName: "Regional Generadora",
+      getValue: (d) => d.regionalGeneradora || "Regional 3",
     },
-    // Donante
+
+    // Identificación del Paciente Donante (Encabezado de datos de donante)
     {
       pageIndex: 0,
-      x: 125,
-      y: 845,
-      fontSize: 9,
-      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || d.nombresApellidos || meta.donorName || "N/A",
-    },
-    {
-      pageIndex: 0,
-      x: 430,
-      y: 845,
-      fontSize: 9,
-      getValue: (d, meta) => d.numeroIdentificacion || d.donanteDocumento || d.fallecidoDocumento || meta.donorDocument || "N/A",
-    },
-    {
-      pageIndex: 0,
-      x: 125,
-      y: 825,
-      fontSize: 8.5,
-      getValue: (d) => d.tipoIdentificacion || d.fallecidoTipoDocumento || "CC",
-    },
-    {
-      pageIndex: 0,
-      x: 240,
-      y: 825,
-      fontSize: 8.5,
-      getValue: (d) => `${d.edad || d.donanteEdad || "N/A"} años`,
-    },
-    {
-      pageIndex: 0,
-      x: 350,
-      y: 825,
-      fontSize: 8.5,
-      getValue: (d) => d.sexo || d.donanteSexo || "MASCULINO",
-    },
-    {
-      pageIndex: 0,
-      x: 450,
-      y: 825,
-      fontSize: 8.5,
+      x: 115,
+      y: 830,
+      maxWidth: 240,
+      fontSize: 8,
       isBold: true,
-      getValue: (d) => `${d.grupoSanguineo || "O"} ${d.factorRh || "POSITIVO"}`,
+      fieldName: "Nombre del Donante",
+      getValue: (d, meta) => d.nombreDonante || d.donanteNombre || d.fallecidoNombre || d.nombresApellidos || meta.donorName || "",
     },
-    // Diagnóstico y Causa de Muerte
     {
       pageIndex: 0,
-      x: 135,
-      y: 775,
+      x: 410,
+      y: 830,
+      maxWidth: 160,
+      fontSize: 8,
+      isBold: true,
+      fieldName: "Identificación del Donante",
+      getValue: (d, meta) => {
+        const tipo = d.tipoIdentificacion || d.donanteTipoDocumento || "CC";
+        const doc = d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "";
+        return doc ? `${tipo} ${doc}` : "";
+      },
+    },
+
+    // Sección Datos del Donante
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 794,
+      maxWidth: 85,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 5.5,
+      isBold: true,
+      fieldName: "IPS Generadora",
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || meta.primaryIpsName || "",
+    },
+    {
+      pageIndex: 0,
+      x: 245,
+      y: 794,
       fontSize: 8.5,
-      maxWidth: 420,
-      getValue: (d) => d.causaMuerte || d.diagnosticoMuerte || "Trauma Craneoencefálico Severo / ECV Isquémico",
+      fieldName: "Edad",
+      getValue: (d) => (d.edad !== undefined && d.edad !== null ? `${d.edad}` : (d.donanteEdad !== undefined ? `${d.donanteEdad}` : "")),
     },
     {
       pageIndex: 0,
-      x: 135,
+      x: 278,
+      y: 777.6,
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Sexo Femenino",
+      getValue: (d) => (String(d.sexo || d.donanteSexo || "").toUpperCase().startsWith("F") ? "X" : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 318,
+      y: 777.6,
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Sexo Masculino",
+      getValue: (d) => (String(d.sexo || d.donanteSexo || "").toUpperCase().startsWith("M") ? "X" : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 395,
+      y: 794,
+      maxWidth: 35,
+      fontSize: 7.5,
+      fieldName: "Etnia",
+      getValue: (d) => d.etnia || "",
+    },
+    {
+      pageIndex: 0,
+      x: 525,
+      y: 794,
+      maxWidth: 50,
+      fontSize: 8,
+      fieldName: "Nacionalidad",
+      getValue: (d) => d.nacionalidad || "Colombiana",
+    },
+
+    // Fecha y hora de ingreso a IPS
+    {
+      pageIndex: 0,
+      x: 67,
+      y: 740,
+      fontSize: 8.5,
+      fieldName: "Fecha Ingreso IPS (DD)",
+      getValue: (d) => (d.fechaIngresoIps ? (d.fechaIngresoIps.includes("-") ? d.fechaIngresoIps.split("-")[2] : "") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 108,
+      y: 740,
+      fontSize: 8.5,
+      fieldName: "Fecha Ingreso IPS (MM)",
+      getValue: (d) => (d.fechaIngresoIps ? (d.fechaIngresoIps.includes("-") ? d.fechaIngresoIps.split("-")[1] : "") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 155,
+      y: 740,
+      fontSize: 8.5,
+      fieldName: "Fecha Ingreso IPS (AAAA)",
+      getValue: (d) => (d.fechaIngresoIps ? (d.fechaIngresoIps.includes("-") ? d.fechaIngresoIps.split("-")[0] : "") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 212,
+      y: 740,
+      fontSize: 8.5,
+      fieldName: "Hora Ingreso IPS",
+      getValue: (d) => d.horaIngresoIps || "",
+    },
+
+    // Escalas de Glasgow y Grupo Sanguíneo
+    {
+      pageIndex: 0,
+      x: 265,
       y: 735,
-      fontSize: 8.5,
-      getValue: (d) => (d.glasgowScore !== undefined && d.glasgowScore !== null ? `Glasgow: ${d.glasgowScore}/15` : (d.glasgowIngreso ? `Glasgow: ${d.glasgowIngreso}/15` : "Glasgow: 3/15 (Midriasis bilateral)")),
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Glasgow Ingreso IPS",
+      getValue: (d) => (d.glasgowIngreso !== undefined && d.glasgowIngreso !== null ? `${d.glasgowIngreso}/15` : (d.glasgowScore ? `${d.glasgowScore}/15` : "")),
     },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 735,
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Glasgow Alerta Posible Donante",
+      getValue: (d) => (d.glasgowAlerta !== undefined && d.glasgowAlerta !== null ? `${d.glasgowAlerta}/15` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 490,
+      y: 751,
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Grupo Sanguíneo",
+      getValue: (d) => d.grupoSanguineo || "",
+    },
+    {
+      pageIndex: 0,
+      x: 550,
+      y: 756,
+      fontSize: 9,
+      isBold: true,
+      fieldName: "Factor Rh",
+      getValue: (d) => (d.factorRh === "POSITIVO" ? "+" : (d.factorRh === "NEGATIVO" ? "-" : (d.factorRh || ""))),
+    },
+    {
+      pageIndex: 0,
+      x: 480,
+      y: 725,
+      fontSize: 7.5,
+      fieldName: "Grupo Sanguíneo Determinado Por",
+      getValue: (d) => d.grupoSanguineoDeterminadoPor || "LABORATORIO",
+    },
+
     // Servicio Hospitalario
     {
       pageIndex: 0,
-      x: 140,
-      y: 703,
-      fontSize: 8.5,
-      getValue: (d) => d.servicioHospitalario || d.servicioUbicacion || "UCI Adultos",
-    },
-    // Monitoreo hemodinámico
-    {
-      pageIndex: 0,
-      x: 135,
-      y: 680,
-      fontSize: 8.5,
-      getValue: (d) => `${d.tensionArterialSistolica || "118"}/${d.tensionArterialDiastolica || "78"} mmHg`,
+      x: 175,
+      y: 704.8,
+      fontSize: 8,
+      isBold: true,
+      fieldName: "Servicio Urgencias",
+      getValue: (d) => (d.servicioHospitalario === "URGENCIAS" ? "X" : ""),
     },
     {
       pageIndex: 0,
-      x: 280,
-      y: 680,
-      fontSize: 8.5,
-      getValue: (d) => `${d.frecuenciaCardiaca || "84"} lpm`,
+      x: 250,
+      y: 704.8,
+      fontSize: 8,
+      isBold: true,
+      fieldName: "Servicio UCI",
+      getValue: (d) => (d.servicioHospitalario === "UCI" || !d.servicioHospitalario ? "X" : ""),
     },
     {
       pageIndex: 0,
-      x: 420,
-      y: 680,
-      fontSize: 8.5,
-      getValue: (d) => `${d.temperaturaCorporal || "36.5"} °C`,
+      x: 325,
+      y: 704.8,
+      fontSize: 7.5,
+      fieldName: "Servicio Otro",
+      getValue: (d) => (d.servicioHospitalario === "OTRO" ? (d.servicioHospitalarioCual || "X") : ""),
     },
-    // Página 2: Criterios clínicos, observaciones y firmas
     {
-      pageIndex: 1,
+      pageIndex: 0,
+      x: 395,
+      y: 698,
+      fontSize: 8.5,
+      fieldName: "Paciente Remitido",
+      getValue: (d) => (d.remitido !== undefined ? (d.remitido ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 510,
+      y: 704,
+      fontSize: 8.5,
+      fieldName: "Estancia Hospitalaria (Días)",
+      getValue: (d) => (d.estanciaHospitalariaDias !== undefined && d.estanciaHospitalariaDias !== null ? `${d.estanciaHospitalariaDias}` : ""),
+    },
+
+    // Diagnóstico del Paciente Posible Donante
+    {
+      pageIndex: 0,
+      x: 42,
+      y: 658,
+      maxWidth: 525,
+      maxHeight: 28,
+      fontSize: 8,
+      minFontSize: 6,
+      fieldName: "Diagnóstico del Paciente Posible Donante",
+      getValue: (d) => d.diagnosticoPosibleDonante || d.causaMuerte || d.diagnosticoMuerte || "Trauma Craneoencefálico Severo / Muerte Encefálica",
+    },
+
+    // Antecedentes (Columna Izquierda: Patológicos, Quirúrgicos, Farmacológicos, Traumáticos, Infecciosos, Fiebre, RCP, Intervenciones Qx)
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 605,
+      fontSize: 8,
+      fieldName: "Antecedentes Patológicos (Sí/No)",
+      getValue: (d) => (d.antPatologicos !== undefined ? (d.antPatologicos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 605,
+      maxWidth: 160,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Patológicos (Cuáles)",
+      getValue: (d) => d.antPatologicosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 578,
+      fontSize: 8,
+      fieldName: "Antecedentes Quirúrgicos (Sí/No)",
+      getValue: (d) => (d.antQuirurgicos !== undefined ? (d.antQuirurgicos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 578,
+      maxWidth: 160,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Quirúrgicos (Cuáles)",
+      getValue: (d) => d.antQuirurgicosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 549,
+      fontSize: 8,
+      fieldName: "Antecedentes Farmacológicos (Sí/No)",
+      getValue: (d) => (d.antFarmacologicos !== undefined ? (d.antFarmacologicos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 549,
+      maxWidth: 160,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Farmacológicos (Cuáles)",
+      getValue: (d) => d.antFarmacologicosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 521,
+      fontSize: 8,
+      fieldName: "Antecedentes Traumáticos (Sí/No)",
+      getValue: (d) => (d.antTraumaticos !== undefined ? (d.antTraumaticos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 521,
+      maxWidth: 160,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Traumáticos (Cuáles)",
+      getValue: (d) => d.antTraumaticosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 485,
+      fontSize: 8,
+      fieldName: "Antecedentes Infecciosos (Sí/No)",
+      getValue: (d) => (d.antInfecciosos !== undefined ? (d.antInfecciosos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 485,
+      maxWidth: 160,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Infecciosos (Cuáles)",
+      getValue: (d) => d.antInfecciososCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 449,
+      fontSize: 8,
+      fieldName: "Fiebre (Sí/No)",
+      getValue: (d) => (d.antFiebre !== undefined ? (d.antFiebre ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 150,
+      y: 449,
+      maxWidth: 125,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Fiebre (Manejo)",
+      getValue: (d) => d.antFiebreManejo || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 413,
+      fontSize: 8,
+      fieldName: "RCP (Sí/No)",
+      getValue: (d) => (d.antRcp !== undefined ? (d.antRcp ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 150,
+      y: 413,
+      maxWidth: 125,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "RCP (Manejo)",
+      getValue: (d) => d.antRcpManejo || "",
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 367,
+      fontSize: 8,
+      fieldName: "Intervenciones Quirúrgicas (Sí/No)",
+      getValue: (d) => (d.antIntervencionesQuirurgicas !== undefined ? (d.antIntervencionesQuirurgicas ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 150,
+      y: 367,
+      maxWidth: 125,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Intervenciones Quirúrgicas (Cuáles)",
+      getValue: (d) => d.antIntervencionesQuirurgicasCuales || "",
+    },
+
+    // Antecedentes (Columna Derecha: Familiares, Tóxico-alérgicos, Inmunológicos, Hospitalarios, Tabaquismo, Hipotensión, Infección, Otros)
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 605,
+      fontSize: 8,
+      fieldName: "Antecedentes Familiares (Sí/No)",
+      getValue: (d) => (d.antFamiliares !== undefined ? (d.antFamiliares ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 605,
+      maxWidth: 200,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Familiares (Cuáles)",
+      getValue: (d) => d.antFamiliaresCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 578,
+      fontSize: 8,
+      fieldName: "Antecedentes Tóxico-Alérgicos (Sí/No)",
+      getValue: (d) => (d.antToxicoAlergicos !== undefined ? (d.antToxicoAlergicos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 578,
+      maxWidth: 200,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Tóxico-Alérgicos (Cuáles)",
+      getValue: (d) => d.antToxicoAlergicosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 549,
+      fontSize: 8,
+      fieldName: "Antecedentes Inmunológicos (Sí/No)",
+      getValue: (d) => (d.antInmunologicos !== undefined ? (d.antInmunologicos ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 549,
+      maxWidth: 200,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Inmunológicos (Cuáles)",
+      getValue: (d) => d.antInmunologicosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 521,
+      fontSize: 8,
+      fieldName: "Antecedentes Hospitalarios (Sí/No)",
+      getValue: (d) => (d.antHospitalarios !== undefined ? (d.antHospitalarios ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 521,
+      maxWidth: 200,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Antecedentes Hospitalarios (Cuáles)",
+      getValue: (d) => d.antHospitalariosCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 345,
+      y: 485,
+      fontSize: 8,
+      fieldName: "Tabaquismo / Alcoholismo (Sí/No)",
+      getValue: (d) => (d.antTabaquismoAlcoholismo !== undefined ? (d.antTabaquismoAlcoholismo ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 385,
+      y: 485,
+      maxWidth: 175,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Tabaquismo / Alcoholismo (Cuáles)",
+      getValue: (d) => d.antTabaquismoAlcoholismoCuales || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 449,
+      fontSize: 8,
+      fieldName: "Hipotensión (Sí/No)",
+      getValue: (d) => (d.antHipotension !== undefined ? (d.antHipotension ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 395,
+      y: 449,
+      maxWidth: 165,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Hipotensión (Manejo)",
+      getValue: (d) => d.antHipotensionManejo || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 413,
+      fontSize: 8,
+      fieldName: "Infección (Sí/No)",
+      getValue: (d) => (d.antInfeccion !== undefined ? (d.antInfeccion ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 395,
+      y: 413,
+      maxWidth: 165,
+      maxHeight: 14,
+      fontSize: 7.5,
+      fieldName: "Infección (Manejo)",
+      getValue: (d) => d.antInfeccionManejo || "",
+    },
+    {
+      pageIndex: 0,
+      x: 355,
+      y: 375,
+      maxWidth: 205,
+      maxHeight: 20,
+      fontSize: 7.5,
+      fieldName: "Otros Antecedentes / Observaciones",
+      getValue: (d) => d.antOtrosObservaciones || "",
+    },
+
+    // Examen Físico y Antropometría
+    {
+      pageIndex: 0,
+      x: 85,
+      y: 295,
+      fontSize: 8,
+      fieldName: "Peso (Kg)",
+      getValue: (d) => (d.pesoKg ? `${d.pesoKg}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 190,
+      y: 295,
+      fontSize: 8,
+      fieldName: "Talla (cm)",
+      getValue: (d) => (d.tallaCm ? `${d.tallaCm}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 305,
+      y: 295,
+      fontSize: 8,
+      fieldName: "Perímetro Abdominal (cm)",
+      getValue: (d) => (d.perimetroAbdominalCm ? `${d.perimetroAbdominalCm}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 415,
+      y: 295,
+      fontSize: 8,
+      fieldName: "Perímetro Torácico (cm)",
+      getValue: (d) => (d.perimetroToracicoCm ? `${d.perimetroToracicoCm}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 530,
+      y: 295,
+      fontSize: 8,
+      fieldName: "IMC",
+      getValue: (d) => (d.imc ? `${d.imc}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 220,
+      y: 283,
+      fontSize: 8,
+      fieldName: "Tatuajes y/o Piercing (Sí/No)",
+      getValue: (d) => (d.tieneTatuajesPiercing !== undefined ? (d.tieneTatuajesPiercing ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 115,
+      y: 258,
+      fontSize: 8,
+      fieldName: "Tatuajes / Piercings Número",
+      getValue: (d) => (d.tatuajesPiercingNumero !== undefined && d.tatuajesPiercingNumero !== null ? `${d.tatuajesPiercingNumero}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 230,
+      y: 258,
+      fontSize: 8,
+      fieldName: "Mes y Año Tatuaje Reciente",
+      getValue: (d) => d.tatuajesPiercingMesAnoReciente || "",
+    },
+    {
+      pageIndex: 0,
+      x: 335,
+      y: 275,
+      maxWidth: 225,
+      maxHeight: 18,
+      fontSize: 7.5,
+      fieldName: "Lesiones Físicas",
+      getValue: (d) => d.lesionesFisicas || "",
+    },
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Tensión Arterial",
+      getValue: (d) => {
+        if (d.tensionArterialSistolica && d.tensionArterialDiastolica) {
+          return `${d.tensionArterialSistolica}/${d.tensionArterialDiastolica}`;
+        }
+        return d.tensionArterialSistolica ? `${d.tensionArterialSistolica} mmHg` : "";
+      },
+    },
+    {
+      pageIndex: 0,
+      x: 145,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Tensión Arterial Media (TAM)",
+      getValue: (d) => (d.tensionArterialMedia ? `${d.tensionArterialMedia}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 215,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Frecuencia Cardíaca",
+      getValue: (d) => (d.frecuenciaCardiaca ? `${d.frecuenciaCardiaca}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 295,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Frecuencia Respiratoria",
+      getValue: (d) => (d.frecuenciaRespiratoria ? `${d.frecuenciaRespiratoria}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 380,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Temperatura Corporal",
+      getValue: (d) => (d.temperaturaCorporal ? `${d.temperaturaCorporal}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 445,
+      y: 235,
+      fontSize: 8,
+      fieldName: "SpO2 %",
+      getValue: (d) => (d.spo2 ? `${d.spo2}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 520,
+      y: 235,
+      fontSize: 8,
+      fieldName: "Diuresis (cc/h)",
+      getValue: (d) => (d.diuresisCcHora ? `${d.diuresisCcHora}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 150,
+      y: 200,
+      maxWidth: 410,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Examen Físico: Otros / Observaciones",
+      getValue: (d) => d.examenFisicoOtrosObservaciones || "",
+    },
+
+    // Monitoreo Clínico
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 152,
+      fontSize: 8,
+      fieldName: "Ventilación Mecánica (Sí/No)",
+      getValue: (d) => (d.tieneVentilacionMecanica !== undefined ? (d.tieneVentilacionMecanica ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
       x: 135,
-      y: 900,
-      fontSize: 8.5,
-      getValue: (d) => d.reflejosTronco || "Reflejos pupilares, corneales y oculocefálicos abolidos",
+      y: 157,
+      fontSize: 8,
+      fieldName: "Ventilación Mecánica (Horas)",
+      getValue: (d) => (d.ventilacionMecanicaHoras !== undefined && d.ventilacionMecanicaHoras !== null ? `${d.ventilacionMecanicaHoras}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 180,
+      y: 157,
+      fontSize: 8,
+      fieldName: "Ventilación Mecánica (Días)",
+      getValue: (d) => (d.ventilacionMecanicaDias !== undefined && d.ventilacionMecanicaDias !== null ? `${d.ventilacionMecanicaDias}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 235,
+      y: 152,
+      fontSize: 8,
+      fieldName: "Línea Arterial (Sí/No)",
+      getValue: (d) => (d.tieneLineaArterial !== undefined ? (d.tieneLineaArterial ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 310,
+      y: 152,
+      fontSize: 8,
+      fieldName: "Nutrición Enteral (Sí/No)",
+      getValue: (d) => (d.tieneNutricionEnteral !== undefined ? (d.tieneNutricionEnteral ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 395,
+      y: 158,
+      fontSize: 8,
+      fieldName: "Nutrición Enteral (Días)",
+      getValue: (d) => (d.nutricionEnteralDias !== undefined && d.nutricionEnteralDias !== null ? `${d.nutricionEnteralDias}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 440,
+      y: 152,
+      fontSize: 8,
+      fieldName: "Nutrición Parenteral (Sí/No)",
+      getValue: (d) => (d.tieneNutricionParenteral !== undefined ? (d.tieneNutricionParenteral ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 535,
+      y: 158,
+      fontSize: 8,
+      fieldName: "Nutrición Parenteral (Días)",
+      getValue: (d) => (d.nutricionParenteralDias !== undefined && d.nutricionParenteralDias !== null ? `${d.nutricionParenteralDias}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 100,
+      y: 108.8,
+      fontSize: 8,
+      fieldName: "Balance de Líquidos (Tipo)",
+      getValue: (d) => (d.balanceLiquidosTipo || ""),
+    },
+    {
+      pageIndex: 0,
+      x: 285,
+      y: 108.8,
+      fontSize: 8,
+      fieldName: "Balance Líquidos Ingresos (cc)",
+      getValue: (d) => (d.balanceIngresosCc !== undefined && d.balanceIngresosCc !== null ? `${d.balanceIngresosCc}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 415,
+      y: 108.8,
+      fontSize: 8,
+      fieldName: "Balance Líquidos Egresos (cc)",
+      getValue: (d) => (d.balanceEgresosCc !== undefined && d.balanceEgresosCc !== null ? `${d.balanceEgresosCc}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 510,
+      y: 108.8,
+      fontSize: 8,
+      fieldName: "Balance Líquidos Total (cc)",
+      getValue: (d) => (d.balanceTotalCc !== undefined && d.balanceTotalCc !== null ? `${d.balanceTotalCc}` : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 75,
+      fontSize: 8,
+      fieldName: "Presión en Cuña Pulmonar (Sí/No)",
+      getValue: (d) => (d.tienePresionCunaPulmonar !== undefined ? (d.tienePresionCunaPulmonar ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 200,
+      y: 75,
+      maxWidth: 75,
+      fontSize: 8,
+      fieldName: "Presión en Cuña Pulmonar (Valor)",
+      getValue: (d) => d.presionCunaPulmonarValor || "",
+    },
+    {
+      pageIndex: 0,
+      x: 320,
+      y: 72.8,
+      fontSize: 8,
+      fieldName: "Catéter Venoso Central (Sí/No)",
+      getValue: (d) => (d.tieneCateterVenosoCentral !== undefined ? (d.tieneCateterVenosoCentral ? "SÍ" : "NO") : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 445,
+      y: 72.8,
+      maxWidth: 100,
+      fontSize: 8,
+      fieldName: "Catéter Venoso Central (Valor)",
+      getValue: (d) => d.cateterVenosoCentralValor || "",
+    },
+
+    // === PÁGINA 2: MANEJO, MEDICAMENTOS, AYUDAS DIAGNÓSTICAS, LABORATORIOS Y CIERRE ===
+    // Manejo Clínico: Líquidos y Transfusiones
+    {
+      pageIndex: 1,
+      x: 42,
+      y: 855,
+      maxWidth: 525,
+      maxHeight: 15,
+      fontSize: 8,
+      minFontSize: 6.5,
+      fieldName: "Líquidos Endovenosos",
+      getValue: (d) => {
+        const parts = [
+          d.liquidosEndovenososTipo,
+          d.liquidosEndovenososCantidadCc ? `${d.liquidosEndovenososCantidadCc} cc` : "",
+          d.liquidosEndovenososMlKgHora ? `${d.liquidosEndovenososMlKgHora} ml/Kg/h` : "",
+        ].filter(Boolean);
+        return parts.join(" · ");
+      },
     },
     {
       pageIndex: 1,
-      x: 135,
-      y: 850,
-      fontSize: 8.5,
-      getValue: (d) => d.testApnea || "Test de apnea positivo (pCO2 > 60 mmHg sin esfuerzo respiratorio)",
+      x: 75,
+      y: 826,
+      fontSize: 8,
+      fieldName: "Transfusiones (Sí/No)",
+      getValue: (d) => (d.tieneTransfusiones !== undefined ? (d.tieneTransfusiones ? "SÍ" : "NO") : ""),
     },
     {
       pageIndex: 1,
-      x: 130,
-      y: 245,
-      fontSize: 8.5,
-      maxWidth: 440,
-      getValue: (d) => d.observacionesAlerta || d.observaciones || "",
+      x: 205,
+      y: 836.9,
+      maxWidth: 60,
+      fontSize: 8,
+      fieldName: "Transfusiones (Tipo)",
+      getValue: (d) => d.transfusionesTipo || "",
     },
     {
       pageIndex: 1,
-      x: 135,
-      y: 400,
+      x: 350,
+      y: 836.9,
+      fontSize: 8,
+      fieldName: "Transfusiones (No. de Unidades)",
+      getValue: (d) => (d.transfusionesUnidades !== undefined && d.transfusionesUnidades !== null ? `${d.transfusionesUnidades}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 520,
+      y: 836.9,
+      maxWidth: 50,
+      fontSize: 7.5,
+      fieldName: "Transfusiones (Fecha y Hora Última)",
+      getValue: (d) => d.transfusionesFechaHoraUltima || "",
+    },
+    {
+      pageIndex: 1,
+      x: 42,
+      y: 798,
+      maxWidth: 525,
+      maxHeight: 15,
+      fontSize: 7.5,
+      fieldName: "Observaciones de Manejo Clínico",
+      getValue: (d) => d.manejoObservaciones || "",
+    },
+
+    // Medicamentos: Filas 1 a 6 de la tabla oficial (y = 758.8, 745.3, 731.8, 718.3, 704.0, 690.5)
+    ...[0, 1, 2, 3, 4, 5].flatMap((idx) => {
+      const yRow = 758.8 - idx * 13.5;
+      return [
+        {
+          pageIndex: 1,
+          x: 55,
+          y: yRow,
+          maxWidth: 115,
+          maxHeight: 12,
+          fontSize: 7.5,
+          fieldName: `Medicamento ${idx + 1} - Nombre`,
+          getValue: (d: any) => d.medicamentos?.[idx]?.nombre || (idx === 0 && d.soporteInotropico ? String(d.soporteInotropico) : ""),
+        },
+        {
+          pageIndex: 1,
+          x: 175,
+          y: yRow,
+          maxWidth: 115,
+          maxHeight: 12,
+          fontSize: 7.5,
+          fieldName: `Medicamento ${idx + 1} - Dosis Actual`,
+          getValue: (d: any) => d.medicamentos?.[idx]?.dosisActual || "",
+        },
+        {
+          pageIndex: 1,
+          x: 295,
+          y: yRow,
+          maxWidth: 115,
+          maxHeight: 12,
+          fontSize: 7.5,
+          fieldName: `Medicamento ${idx + 1} - Inicio`,
+          getValue: (d: any) => d.medicamentos?.[idx]?.fechaInicio || "",
+        },
+        {
+          pageIndex: 1,
+          x: 415,
+          y: yRow,
+          maxWidth: 80,
+          maxHeight: 12,
+          fontSize: 7.5,
+          fieldName: `Medicamento ${idx + 1} - Fin`,
+          getValue: (d: any) => d.medicamentos?.[idx]?.fechaFin || "",
+        },
+        {
+          pageIndex: 1,
+          x: 501,
+          y: yRow,
+          maxWidth: 70,
+          maxHeight: 12,
+          fontSize: 7.5,
+          fieldName: `Medicamento ${idx + 1} - Dosis Máxima`,
+          getValue: (d: any) => d.medicamentos?.[idx]?.dosisMaxima || "",
+        },
+      ];
+    }),
+
+    // Ayudas Diagnósticas
+    {
+      pageIndex: 1,
+      x: 90,
+      y: 662,
+      maxWidth: 185,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Radiografía de Tórax",
+      getValue: (d) => d.rxTorax || "",
+    },
+    {
+      pageIndex: 1,
+      x: 360,
+      y: 662,
+      maxWidth: 200,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Ecografía Abdominal",
+      getValue: (d) => d.ecografiaAbdominal || "",
+    },
+    {
+      pageIndex: 1,
+      x: 90,
+      y: 640,
+      maxWidth: 185,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Electrocardiograma (ECG)",
+      getValue: (d) => d.ecg || "",
+    },
+    {
+      pageIndex: 1,
+      x: 360,
+      y: 640,
+      maxWidth: 200,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Ecocardiograma",
+      getValue: (d) => d.ecocardiograma || "",
+    },
+    {
+      pageIndex: 1,
+      x: 90,
+      y: 618,
+      maxWidth: 185,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "Tomografía Axial Computarizada (TAC)",
+      getValue: (d) => d.tac || "",
+    },
+    {
+      pageIndex: 1,
+      x: 360,
+      y: 615,
+      maxWidth: 200,
+      maxHeight: 16,
+      fontSize: 7.5,
+      fieldName: "FEVI",
+      getValue: (d) => (d.fevi ? `${d.fevi}%` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 125,
+      y: 596,
+      maxWidth: 435,
+      maxHeight: 18,
+      fontSize: 7.5,
+      fieldName: "Otras Ayudas Diagnósticas",
+      getValue: (d) => d.otrasAyudasDiagnosticas || "",
+    },
+
+    // Laboratorios Clínicos: Encabezado reporte
+    {
+      pageIndex: 1,
+      x: 155,
+      y: 559.9,
+      maxWidth: 140,
+      fontSize: 8,
+      fieldName: "Fecha y Hora Reporte Laboratorio",
+      getValue: (d) => d.laboratorioFechaHoraReporte || "",
+    },
+    {
+      pageIndex: 1,
+      x: 445,
+      y: 559.9,
+      maxWidth: 130,
+      fontSize: 8,
+      fieldName: "Laboratorio de Procesamiento",
+      getValue: (d, meta) => d.laboratorioProcesamiento || meta.primaryIpsName || "",
+    },
+
+    // Cuadro Hemático (Valores en x = 115)
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 518.6,
+      fontSize: 8,
+      fieldName: "Hemoglobina (Hb)",
+      getValue: (d) => (d.labHb !== undefined && d.labHb !== null ? `${d.labHb}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 501.4,
+      fontSize: 8,
+      fieldName: "Hematocrito (Hto)",
+      getValue: (d) => (d.labHto !== undefined && d.labHto !== null ? `${d.labHto}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 484.9,
+      fontSize: 8,
+      fieldName: "Leucocitos",
+      getValue: (d) => (d.labLeucocitos !== undefined && d.labLeucocitos !== null ? `${d.labLeucocitos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 467.6,
+      fontSize: 8,
+      fieldName: "Linfocitos",
+      getValue: (d) => (d.labLinfocitos !== undefined && d.labLinfocitos !== null ? `${d.labLinfocitos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 450.3,
+      fontSize: 8,
+      fieldName: "Neutrófilos",
+      getValue: (d) => (d.labNeutrofilos !== undefined && d.labNeutrofilos !== null ? `${d.labNeutrofilos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 433.8,
+      fontSize: 8,
+      fieldName: "Basófilos",
+      getValue: (d) => (d.labBasofilos !== undefined && d.labBasofilos !== null ? `${d.labBasofilos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 414.3,
+      fontSize: 8,
+      fieldName: "Monocitos",
+      getValue: (d) => (d.labMonocitos !== undefined && d.labMonocitos !== null ? `${d.labMonocitos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 395.6,
+      fontSize: 8,
+      fieldName: "Cayados",
+      getValue: (d) => (d.labCayados !== undefined && d.labCayados !== null ? `${d.labCayados}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 378.3,
+      fontSize: 8,
+      fieldName: "Eosinófilos",
+      getValue: (d) => (d.labEosinofilos !== undefined && d.labEosinofilos !== null ? `${d.labEosinofilos}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 115,
+      y: 361.0,
+      fontSize: 8,
+      fieldName: "Plaquetas",
+      getValue: (d) => (d.labPlaquetas !== undefined && d.labPlaquetas !== null ? `${d.labPlaquetas}` : ""),
+    },
+
+    // Química Sanguínea (Valores en x = 315)
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 518.6,
+      fontSize: 8,
+      fieldName: "Creatinina Sérica",
+      getValue: (d) => (d.labCreatinina !== undefined && d.labCreatinina !== null ? `${d.labCreatinina}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 501.4,
+      fontSize: 8,
+      fieldName: "BUN",
+      getValue: (d) => (d.labBun !== undefined && d.labBun !== null ? `${d.labBun}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 484.9,
+      fontSize: 8,
+      fieldName: "ALT / GPT",
+      getValue: (d) => (d.labAltGpt !== undefined && d.labAltGpt !== null ? `${d.labAltGpt}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 467.6,
+      fontSize: 8,
+      fieldName: "AST / GOT",
+      getValue: (d) => (d.labAstGot !== undefined && d.labAstGot !== null ? `${d.labAstGot}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 450.3,
+      fontSize: 8,
+      fieldName: "Bilirrubina Total",
+      getValue: (d) => (d.labBilirrubinaTotal !== undefined && d.labBilirrubinaTotal !== null ? `${d.labBilirrubinaTotal}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 433.8,
+      fontSize: 8,
+      fieldName: "Bilirrubina Directa",
+      getValue: (d) => (d.labBilirrubinaDirecta !== undefined && d.labBilirrubinaDirecta !== null ? `${d.labBilirrubinaDirecta}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 409.1,
+      fontSize: 8,
+      fieldName: "Bilirrubina Indirecta",
+      getValue: (d) => (d.labBilirrubinaIndirecta !== undefined && d.labBilirrubinaIndirecta !== null ? `${d.labBilirrubinaIndirecta}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 395.6,
+      fontSize: 8,
+      fieldName: "Amilasa",
+      getValue: (d) => (d.labAmilasa !== undefined && d.labAmilasa !== null ? `${d.labAmilasa}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 378.3,
+      fontSize: 8,
+      fieldName: "Glicemia",
+      getValue: (d) => (d.labGlicemia !== undefined && d.labGlicemia !== null ? `${d.labGlicemia}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 361.0,
+      fontSize: 8,
+      fieldName: "CPK Total",
+      getValue: (d) => (d.labCpk !== undefined && d.labCpk !== null ? `${d.labCpk}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 344.5,
+      fontSize: 8,
+      fieldName: "CPK-MB",
+      getValue: (d) => (d.labCpkMb !== undefined && d.labCpkMb !== null ? `${d.labCpkMb}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 327.2,
+      fontSize: 8,
+      fieldName: "LDH",
+      getValue: (d) => (d.labLdh !== undefined && d.labLdh !== null ? `${d.labLdh}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 310.0,
+      fontSize: 8,
+      fieldName: "GGT",
+      getValue: (d) => (d.labGgt !== undefined && d.labGgt !== null ? `${d.labGgt}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 293.5,
+      fontSize: 8,
+      fieldName: "Fosfatasa Alcalina",
+      getValue: (d) => (d.labFosfatasaAlcalina !== undefined && d.labFosfatasaAlcalina !== null ? `${d.labFosfatasaAlcalina}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 276.2,
+      fontSize: 8,
+      fieldName: "Albúmina",
+      getValue: (d) => (d.labAlbumina !== undefined && d.labAlbumina !== null ? `${d.labAlbumina}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 315,
+      y: 258.9,
+      fontSize: 8,
+      fieldName: "Troponina",
+      getValue: (d) => (d.labTroponina !== undefined && d.labTroponina !== null ? `${d.labTroponina}` : ""),
+    },
+
+    // Electrolitos (Valores en x = 122)
+    {
+      pageIndex: 1,
+      x: 122,
+      y: 327.2,
+      fontSize: 8,
+      fieldName: "Sodio (Na)",
+      getValue: (d) => (d.labSodio !== undefined && d.labSodio !== null ? `${d.labSodio}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 122,
+      y: 310.0,
+      fontSize: 8,
+      fieldName: "Potasio (K)",
+      getValue: (d) => (d.labPotasio !== undefined && d.labPotasio !== null ? `${d.labPotasio}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 122,
+      y: 293.5,
+      fontSize: 8,
+      fieldName: "Cloro (Cl)",
+      getValue: (d) => (d.labCloro !== undefined && d.labCloro !== null ? `${d.labCloro}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 122,
+      y: 276.2,
+      fontSize: 8,
+      fieldName: "Calcio (Ca)",
+      getValue: (d) => (d.labCalcio !== undefined && d.labCalcio !== null ? `${d.labCalcio}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 122,
+      y: 258.9,
+      fontSize: 8,
+      fieldName: "Lactato",
+      getValue: (d) => (d.labLactato !== undefined && d.labLactato !== null ? `${d.labLactato}` : ""),
+    },
+
+    // Gases Arteriales (Valores en x = 485)
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 518.6,
+      fontSize: 8,
+      fieldName: "pH Arterial",
+      getValue: (d) => (d.labPh !== undefined && d.labPh !== null ? `${d.labPh}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 501.4,
+      fontSize: 8,
+      fieldName: "pCO2",
+      getValue: (d) => (d.labPco2 !== undefined && d.labPco2 !== null ? `${d.labPco2}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 484.9,
+      fontSize: 8,
+      fieldName: "pO2",
+      getValue: (d) => (d.labPo2 !== undefined && d.labPo2 !== null ? `${d.labPo2}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 467.6,
+      fontSize: 8,
+      fieldName: "H2CO3 / HCO3",
+      getValue: (d) => (d.labHco3 !== undefined && d.labHco3 !== null ? `${d.labHco3}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 450.3,
+      fontSize: 8,
+      fieldName: "Base Excess (BE)",
+      getValue: (d) => (d.labBe !== undefined && d.labBe !== null ? `${d.labBe}` : ""),
+    },
+
+    // Coagulación (Valores en x = 485)
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 409.1,
+      fontSize: 8,
+      fieldName: "Tiempo de Protrombina (PT)",
+      getValue: (d) => (d.labPt !== undefined && d.labPt !== null ? `${d.labPt}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 394.8,
+      fontSize: 8,
+      fieldName: "Tiempo Parcial de Tromboplastina (PTT)",
+      getValue: (d) => (d.labPtt !== undefined && d.labPtt !== null ? `${d.labPtt}` : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 485,
+      y: 377.5,
+      fontSize: 8,
+      fieldName: "INR",
+      getValue: (d) => (d.labInr !== undefined && d.labInr !== null ? `${d.labInr}` : ""),
+    },
+
+    // Parcial de Orina y Cultivos
+    {
+      pageIndex: 1,
+      x: 410,
+      y: 345,
+      maxWidth: 160,
+      maxHeight: 20,
+      fontSize: 7,
+      fieldName: "Parcial de Orina",
+      getValue: (d) => d.labParcialOrina || "",
+    },
+    {
+      pageIndex: 1,
+      x: 410,
+      y: 278,
+      maxWidth: 160,
+      maxHeight: 20,
+      fontSize: 7,
+      fieldName: "Cultivos",
+      getValue: (d) => d.labCultivos || "",
+    },
+
+    // Observaciones Generales de Laboratorio y Alerta
+    {
+      pageIndex: 1,
+      x: 42,
+      y: 232,
+      maxWidth: 525,
+      maxHeight: 50,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Observaciones Generales de Laboratorio",
+      getValue: (d) => d.observacionesAlerta || d.labObservaciones || d.observaciones || "",
+    },
+
+    // Firma Médico Coordinador Operativo
+    {
+      pageIndex: 1,
+      x: 220,
+      y: 185,
       fontSize: 8.5,
       isBold: true,
-      getValue: (_, meta) => meta.rndCode ? `RND INS Certificado: ${meta.rndCode}` : "Pendiente consulta RND oficial",
+      fieldName: "Firma Médico Coordinador Operativo",
+      getValue: (d, meta) => meta.generatedByName || d.medicoCoordinador || "Médico Coordinador Operativo Regional 3",
     },
   ],
 
@@ -197,65 +1582,447 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
   // (2 Páginas: 612 x 792)
   // -------------------------------------------------------------
   anexo_2: [
+    // === PÁGINA 1: DECLARACIÓN INSTITUCIONAL Y NOTIFICACIÓN ===
+    // Coordinador Operativo
     {
       pageIndex: 0,
-      x: 140,
-      y: 710,
-      fontSize: 9,
+      x: 78,
+      y: 615,
+      maxWidth: 248,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
       isBold: true,
-      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "N/A",
+      fieldName: "Nombre Coordinador Operativo",
+      getValue: (d, meta) => d.coordinadorNombre || d.medicoCoordinador || meta.generatedByName || "Médico Coordinador Operativo",
     },
     {
       pageIndex: 0,
-      x: 430,
-      y: 710,
-      fontSize: 9,
-      getValue: (d, meta) => `${d.fallecidoTipoDocumento || d.tipoIdentificacion || "CC"}: ${d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A"}`,
+      x: 58,
+      y: 602,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Cédula Coordinador Operativo",
+      getValue: (d) => d.coordinadorDocumento || d.cedulaCoordinador || d.medicoDocumento || "",
     },
     {
       pageIndex: 0,
-      x: 140,
-      y: 665,
-      fontSize: 9,
+      x: 262,
+      y: 589,
+      maxWidth: 160,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
       isBold: true,
-      getValue: (d) => d.notificadoNombre || "Familiar o Deudo Notificado",
+      fieldName: "Institución Coordinador",
+      getValue: (d, meta) => d.ipsGeneradora || d.institucionRemitente || d.nombreIps || meta.primaryIpsName || "",
     },
+
+    // Persona Fallecida (Donante)
     {
       pageIndex: 0,
-      x: 430,
-      y: 665,
-      fontSize: 9,
-      getValue: (d) => `${d.notificadoTipoDocumento || "CC"} ${d.notificadoDocumento || "N/A"} (${d.notificadoParentesco || "Primer Grado"})`,
-    },
-    {
-      pageIndex: 0,
-      x: 140,
-      y: 620,
-      fontSize: 8.5,
-      getValue: (d, meta) => `${d.ciudadNotificacion || "Cali"}, ${d.fechaNotificacion || new Date(meta.generatedAt).toLocaleDateString("es-CO")}`,
-    },
-    {
-      pageIndex: 0,
-      x: 380,
-      y: 620,
-      fontSize: 8.5,
+      x: 160,
+      y: 564,
+      maxWidth: 205,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
       isBold: true,
-      getValue: (d, meta) => d.codigoConsultaRND || meta.rndCode || "CONSULTA-RND-1805",
+      fieldName: "Nombre Persona Fallecida",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "",
+    },
+    {
+      pageIndex: 0,
+      x: 79,
+      y: 551,
+      maxWidth: 40,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Tipo Doc Fallecido",
+      getValue: (d) => d.fallecidoTipoDocumento || d.tipoIdentificacion || d.donanteTipoDocumento || "Cédula",
+    },
+    {
+      pageIndex: 0,
+      x: 169,
+      y: 551,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      isBold: true,
+      fieldName: "Número Doc Fallecido",
+      getValue: (d, meta) => d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "",
+    },
+
+    // Consulta Registro Nacional de Donantes (RND)
+    {
+      pageIndex: 0,
+      x: 305,
+      y: 538,
+      maxWidth: 106,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 5.5,
+      isBold: true,
+      fieldName: "Código Consulta RND",
+      getValue: (d, meta) => d.codigoConsultaRnd || d.codigoConsultaRND || d.codigoRnd || meta.rndCode || "",
+    },
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 525,
+      maxWidth: 148,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Entidad Administradora RND",
+      getValue: (d) => d.entidadRnd || "Instituto Nacional de Salud",
+    },
+    {
+      pageIndex: 0,
+      x: 266,
+      y: 525,
+      maxWidth: 36,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Hora Consulta RND",
+      getValue: (d) => d.horaRnd || d.horaConsulta || d.horaNotificacion || "",
+    },
+    {
+      pageIndex: 0,
+      x: 346,
+      y: 525,
+      maxWidth: 22,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Día Consulta RND",
+      getValue: (d, meta) => {
+        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        return p.length === 3 ? p[2].slice(0, 2) : "";
+      },
+    },
+    {
+      pageIndex: 0,
+      x: 412,
+      y: 525,
+      maxWidth: 28,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Mes Consulta RND",
+      getValue: (d, meta) => {
+        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        if (p.length === 3) {
+          const m = parseInt(p[1], 10);
+          const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+          return meses[m - 1] || p[1];
+        }
+        return "";
+      },
+    },
+    {
+      pageIndex: 0,
+      x: 485,
+      y: 525,
+      maxWidth: 38,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Año Consulta RND",
+      getValue: (d, meta) => {
+        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        return p.length === 3 ? p[0] : "";
+      },
+    },
+
+    // Persona Notificada (Deudo)
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 475,
+      maxWidth: 325,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Persona Notificada",
+      getValue: (d) => d.notificadoNombre || d.deudoNombre || d.familiarNombre || "",
+    },
+    {
+      pageIndex: 0,
+      x: 145,
+      y: 462,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Cédula Persona Notificada",
+      getValue: (d) => d.notificadoDocumento || d.deudoDocumento || d.familiarDocumento || "",
+    },
+    {
+      pageIndex: 0,
+      x: 324,
+      y: 462,
+      maxWidth: 140,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      isBold: true,
+      fieldName: "Calidad / Parentesco",
+      getValue: (d) => d.notificadoParentesco || d.parentesco || "",
+    },
+
+    // Lugar y Fecha de Expedición
+    {
+      pageIndex: 0,
+      x: 316,
+      y: 222,
+      maxWidth: 82,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Ciudad Expedición",
+      getValue: (d) => d.ciudadNotificacion || d.ciudad || "Cali",
+    },
+    {
+      pageIndex: 0,
+      x: 435,
+      y: 222,
+      maxWidth: 34,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Día Expedición",
+      getValue: (d, meta) => {
+        const raw = d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        return p.length === 3 ? p[2].slice(0, 2) : "";
+      },
+    },
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 209,
+      maxWidth: 64,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Mes Expedición",
+      getValue: (d, meta) => {
+        const raw = d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        if (p.length === 3) {
+          const m = parseInt(p[1], 10);
+          const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+          return meses[m - 1] || p[1];
+        }
+        return "";
+      },
+    },
+    {
+      pageIndex: 0,
+      x: 180,
+      y: 209,
+      maxWidth: 28,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Año Expedición",
+      getValue: (d, meta) => {
+        const raw = d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        if (!raw) return "";
+        const p = raw.split("-");
+        return p.length === 3 ? p[0] : "";
+      },
+    },
+
+    // Firma 1 (Deudo Notificado - Página 1)
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 171,
+      maxWidth: 295,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Firma P1 Nombre",
+      getValue: (d) => d.notificadoNombre || d.deudoNombre || d.familiarNombre || "",
+    },
+    {
+      pageIndex: 0,
+      x: 151,
+      y: 133,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma P1 Cédula",
+      getValue: (d) => d.notificadoDocumento || d.deudoDocumento || d.familiarDocumento || "",
+    },
+    {
+      pageIndex: 0,
+      x: 308,
+      y: 133,
+      maxWidth: 71,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma P1 Parentesco",
+      getValue: (d) => d.notificadoParentesco || d.parentesco || "",
+    },
+
+    // === PÁGINA 2: SEGUNDO DEUDO, COORDINADOR, TESTIGO Y OBSERVACIONES ===
+    // Segunda Persona Notificada (Opcional)
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 667,
+      maxWidth: 325,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Segunda Persona Nombre",
+      getValue: (d) => d.segundaPersonaNombre || d.segundoDeudoNombre || "",
     },
     {
       pageIndex: 1,
-      x: 140,
-      y: 680,
-      fontSize: 8.5,
-      maxWidth: 420,
-      getValue: (d) => d.observaciones || "Notificación de la presunción legal efectuada de conformidad con la Ley 1805 de 2016.",
+      x: 151,
+      y: 629,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Segunda Persona Cédula",
+      getValue: (d) => d.segundaPersonaDocumento || d.segundoDeudoDocumento || "",
     },
     {
       pageIndex: 1,
-      x: 140,
-      y: 280,
-      fontSize: 8.5,
-      getValue: (d) => d.testigoNombre ? `Testigo: ${d.testigoNombre} (${d.testigoDocumento || "CC"})` : "Sin testigo adicional",
+      x: 308,
+      y: 629,
+      maxWidth: 71,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Segunda Persona Parentesco",
+      getValue: (d) => d.segundaPersonaParentesco || d.segundoDeudoParentesco || "",
+    },
+
+    // Firma Coordinador Operativo (Página 2)
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 578,
+      maxWidth: 325,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Firma Coordinador Nombre",
+      getValue: (d, meta) => d.coordinadorNombre || d.medicoCoordinador || meta.generatedByName || "Médico Coordinador Operativo",
+    },
+    {
+      pageIndex: 1,
+      x: 148,
+      y: 553,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Coordinador Cédula",
+      getValue: (d) => d.coordinadorDocumento || d.cedulaCoordinador || d.medicoDocumento || "",
+    },
+    {
+      pageIndex: 1,
+      x: 278,
+      y: 553,
+      maxWidth: 72,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Coordinador Cargo",
+      getValue: (d) => d.coordinadorCargo || "Coordinador Operativo",
+    },
+
+    // Firma Testigo (Página 2)
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 502,
+      maxWidth: 233,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      fieldName: "Firma Testigo Nombre",
+      getValue: (d) => d.testigoNombre || "",
+    },
+    {
+      pageIndex: 1,
+      x: 151,
+      y: 476,
+      maxWidth: 88,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Cédula",
+      getValue: (d) => d.testigoDocumento || "",
+    },
+    {
+      pageIndex: 1,
+      x: 281,
+      y: 476,
+      maxWidth: 71,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Parentesco/Cargo",
+      getValue: (d) => d.testigoCargo || d.testigoParentesco || "",
+    },
+
+    // Observaciones (Página 2)
+    {
+      pageIndex: 1,
+      x: 208,
+      y: 439,
+      maxWidth: 345,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Observaciones Notificación L1",
+      getValue: (d) => {
+        const obs = d.observaciones || d.observacionesNotificacion || "";
+        if (!obs) return "";
+        return obs.length > 70 ? obs.slice(0, 70) : obs;
+      },
+    },
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 426,
+      maxWidth: 490,
+      maxHeight: 35,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Observaciones Notificación Resto",
+      getValue: (d) => {
+        const obs = d.observaciones || d.observacionesNotificacion || "";
+        if (!obs || obs.length <= 70) return "";
+        return obs.slice(70).trim();
+      },
     },
   ],
 
@@ -264,51 +2031,370 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
   // (2 Páginas: 612 x 792)
   // -------------------------------------------------------------
   anexo_3: [
+    // === PÁGINA 1: DATOS, REPRESENTANTES Y DECLARACIÓN ===
     {
       pageIndex: 0,
-      x: 140,
-      y: 710,
-      fontSize: 9,
-      isBold: true,
-      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "N/A",
+      x: 95,
+      y: 642,
+      maxWidth: 160,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Fecha Consentimiento",
+      getValue: (d, meta) => d.fechaConsentimiento || d.fecha || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : ""),
+    },
+    {
+      pageIndex: 0,
+      x: 288,
+      y: 642,
+      maxWidth: 94,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Hora Consentimiento",
+      getValue: (d) => d.horaConsentimiento || d.hora || "",
     },
     {
       pageIndex: 0,
       x: 430,
-      y: 710,
-      fontSize: 9,
-      getValue: (d, meta) => d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "N/A",
+      y: 642,
+      maxWidth: 113,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Ciudad Consentimiento",
+      getValue: (d) => d.ciudadConsentimiento || d.ciudad || "Cali",
     },
+
+    // Tabla de Representantes Legales (Filas 1 y 2)
+    // Representante Legal 1
     {
       pageIndex: 0,
-      x: 140,
-      y: 660,
-      fontSize: 9,
+      x: 75,
+      y: 566,
+      maxWidth: 155,
+      maxHeight: 14,
+      fontSize: 8,
+      minFontSize: 6.5,
       isBold: true,
-      getValue: (d) => d.representanteNombre || d.autorizadoPor || "Representante Legal o Familiar",
+      fieldName: "Representante 1 Nombre",
+      getValue: (d) => d.representanteNombre || d.autorizadoPor || d.familiarNombre || "",
     },
     {
       pageIndex: 0,
-      x: 430,
-      y: 660,
-      fontSize: 9,
-      getValue: (d) => `${d.representanteTipoDocumento || "CC"} ${d.representanteDocumento || "N/A"} (${d.parentesco || "Familiar"})`,
+      x: 252,
+      y: 566,
+      maxWidth: 90,
+      maxHeight: 14,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Representante 1 Documento",
+      getValue: (d) => {
+        const tipo = d.representanteTipoDocumento || "CC";
+        const doc = d.representanteDocumento || "";
+        return doc ? `${tipo} ${doc}` : "";
+      },
     },
     {
       pageIndex: 0,
-      x: 140,
-      y: 580,
-      fontSize: 9,
+      x: 360,
+      y: 566,
+      maxWidth: 185,
+      maxHeight: 14,
+      fontSize: 7.5,
+      minFontSize: 6,
       isBold: true,
-      getValue: (d) => d.autorizaExtraccion !== false ? "[X] SÍ AUTORIZA DONACIÓN" : "[ ] NO AUTORIZA",
+      fieldName: "Representante 1 Parentesco",
+      getValue: (d) => d.parentesco || d.representanteParentesco || "",
+    },
+
+    // Representante Legal 2 (Opcional - Fila 2)
+    {
+      pageIndex: 0,
+      x: 75,
+      y: 520,
+      maxWidth: 155,
+      maxHeight: 14,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Representante 2 Nombre",
+      getValue: (d) => d.segundoRepresentanteNombre || "",
+    },
+    {
+      pageIndex: 0,
+      x: 252,
+      y: 520,
+      maxWidth: 90,
+      maxHeight: 14,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Representante 2 Documento",
+      getValue: (d) => d.segundoRepresentanteDocumento || "",
+    },
+    {
+      pageIndex: 0,
+      x: 360,
+      y: 520,
+      maxWidth: 185,
+      maxHeight: 14,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Representante 2 Parentesco",
+      getValue: (d) => d.segundoRepresentanteParentesco || "",
+    },
+
+    // Persona Fallecida (Donante) bajo la tabla
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 445,
+      maxWidth: 380,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Fallecido Nombre",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || d.nombresApellidos || meta.donorName || "",
+    },
+    {
+      pageIndex: 0,
+      x: 342,
+      y: 432,
+      maxWidth: 155,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Fallecido Tipo Documento",
+      getValue: (d) => d.fallecidoTipoDocumento || d.tipoIdentificacion || d.donanteTipoDocumento || "Cédula de Ciudadanía",
+    },
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 420,
+      maxWidth: 185,
+      maxHeight: 11,
+      fontSize: 8,
+      minFontSize: 6.5,
+      isBold: true,
+      fieldName: "Fallecido Número Documento",
+      getValue: (d, meta) => d.fallecidoDocumento || d.numeroIdentificacion || d.donanteDocumento || meta.donorDocument || "",
+    },
+    {
+      pageIndex: 0,
+      x: 58,
+      y: 407,
+      maxWidth: 265,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Fallecido Lugar Expedición",
+      getValue: (d) => d.fallecidoLugarExpedicion || d.donanteLugarExpedicion || "Cali",
+    },
+    {
+      pageIndex: 0,
+      x: 94,
+      y: 254,
+      maxWidth: 260,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Posibilidades Nombre Fallecido",
+      getValue: (d, meta) => d.fallecidoNombre || d.nombreDonante || d.donanteNombre || meta.donorName || "",
+    },
+
+    // Checkbox de Autorización (Página 1) - Marco sin superposición
+    {
+      pageIndex: 0,
+      x: 118,
+      y: 136,
+      maxWidth: 20,
+      maxHeight: 13,
+      drawBox: true,
+      fieldName: "Autoriza SÍ Recuadro",
+      getValue: (d) => (d.autorizaExtraccion !== false && d.autorizaDonacion !== false),
+    },
+    {
+      pageIndex: 0,
+      x: 142,
+      y: 136,
+      maxWidth: 26,
+      maxHeight: 13,
+      drawBox: true,
+      fieldName: "Autoriza NO Recuadro",
+      getValue: (d) => (d.autorizaExtraccion === false || d.autorizaDonacion === false),
+    },
+
+    // === PÁGINA 2: FINALIDADES, ÓRGANOS Y FIRMAS ===
+    // Tabla Finalidad
+    {
+      pageIndex: 1,
+      x: 191,
+      y: 641,
+      fontSize: 10,
+      isBold: true,
+      fieldName: "Finalidad Trasplante SÍ",
+      getValue: (d) => (d.finalidadTrasplante !== false ? "X" : ""),
     },
     {
       pageIndex: 1,
-      x: 140,
-      y: 400,
-      fontSize: 8.5,
-      maxWidth: 420,
-      getValue: (d) => d.organosAutorizados || "Autorización expresa para fines de trasplante e implante según normatividad.",
+      x: 219,
+      y: 641,
+      fontSize: 10,
+      isBold: true,
+      fieldName: "Finalidad Trasplante NO",
+      getValue: (d) => (d.finalidadTrasplante === false ? "X" : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 260,
+      y: 641,
+      maxWidth: 290,
+      maxHeight: 30,
+      fontSize: 7,
+      minFontSize: 5.5,
+      fieldName: "Finalidad Observaciones / Órganos",
+      getValue: (d) => d.organosAutorizados || d.observacionesFinalidad || d.tejidosAutorizados || "Autorización con fines de trasplante e implante de conformidad con la Ley 1805 de 2016.",
+    },
+
+    // Firmas Página 2
+    // Firma Representante Legal 1
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 431,
+      maxWidth: 220,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      isBold: true,
+      fieldName: "Firma Representante 1 Nombre",
+      getValue: (d) => d.representanteNombre || d.autorizadoPor || d.familiarNombre || "",
+    },
+    {
+      pageIndex: 1,
+      x: 342,
+      y: 431,
+      maxWidth: 180,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Representante 1 Atestación",
+      getValue: (d) => (d.representanteNombre ? "Registrado en GODT" : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 98,
+      y: 405,
+      maxWidth: 175,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Representante 1 Cédula",
+      getValue: (d) => d.representanteDocumento || "",
+    },
+    {
+      pageIndex: 1,
+      x: 346,
+      y: 405,
+      maxWidth: 155,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Representante 1 Parentesco",
+      getValue: (d) => d.parentesco || d.representanteParentesco || "",
+    },
+
+    // Firma Testigo
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 357,
+      maxWidth: 220,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Nombre",
+      getValue: (d) => d.testigoNombre || "",
+    },
+    {
+      pageIndex: 1,
+      x: 342,
+      y: 357,
+      maxWidth: 180,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Atestación",
+      getValue: (d) => (d.testigoNombre ? "Registrado en GODT" : ""),
+    },
+    {
+      pageIndex: 1,
+      x: 98,
+      y: 331,
+      maxWidth: 175,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Cédula",
+      getValue: (d) => d.testigoDocumento || "",
+    },
+    {
+      pageIndex: 1,
+      x: 346,
+      y: 331,
+      maxWidth: 155,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Firma Testigo Parentesco/Cargo",
+      getValue: (d) => d.testigoCargo || d.testigoParentesco || "",
+    },
+
+    // Entrevistadores
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 270,
+      maxWidth: 235,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      isBold: true,
+      fieldName: "Entrevistador 1 Nombre",
+      getValue: (d, meta) => d.entrevistadorNombre || d.coordinadorNombre || d.medicoCoordinador || meta.generatedByName || "Médico Coordinador Operativo",
+    },
+    {
+      pageIndex: 1,
+      x: 306,
+      y: 270,
+      maxWidth: 200,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Entrevistador 2 Nombre",
+      getValue: (d) => d.segundoEntrevistadorNombre || "",
+    },
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 221,
+      maxWidth: 235,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Entrevistador 1 Registro",
+      getValue: (d) => d.entrevistadorRegistro || d.coordinadorRegistro || d.registroMedico || "Registro Médico Regional 3",
+    },
+    {
+      pageIndex: 1,
+      x: 334,
+      y: 221,
+      maxWidth: 198,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Entrevistador 2 Cédula",
+      getValue: (d) => d.segundoEntrevistadorDocumento || "",
     },
   ],
 
