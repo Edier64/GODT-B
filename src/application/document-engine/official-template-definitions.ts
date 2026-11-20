@@ -20,7 +20,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_2",
     name: "Anexo 2 — Notificación a deudos sobre la Ley 1805 de 2016",
     category: "LEGAL",
-    versionNumber: "2.2.0",
+    versionNumber: "2.3.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "notificadoNombre", "notificadoDocumento"],
@@ -34,14 +34,14 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         fallecidoDocumento: { type: "string", title: "Número de Identificación del Fallecido" },
         codigoConsultaRND: { type: "string", title: "Código de Consulta al RND" },
         entidadConsultaRND: { type: "string", title: "Entidad que Certifica RND", default: "Instituto Nacional de Salud" },
-        horaConsultaRND: { type: "string", title: "Hora Consulta RND (HH:MM)" },
-        fechaConsultaRND: { type: "string", title: "Fecha Consulta RND (AAAA-MM-DD)" },
+        horaConsultaRND: { type: "string", title: "Hora Consulta RND", format: "time" },
+        fechaConsultaRND: { type: "string", title: "Fecha Consulta RND", format: "date" },
         notificadoNombre: { type: "string", title: "Nombre de la Persona Notificada" },
         notificadoTipoDocumento: { type: "string", title: "Tipo Doc. Notificado", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
         notificadoDocumento: { type: "string", title: "Identificación de la Persona Notificada" },
         notificadoParentesco: { type: "string", title: "Parentesco / Calidad con el Fallecido" },
         ciudadNotificacion: { type: "string", title: "Ciudad de Notificación" },
-        fechaNotificacion: { type: "string", title: "Fecha de Notificación (AAAA-MM-DD)" },
+        fechaNotificacion: { type: "string", title: "Fecha de Notificación", format: "date" },
         segundaPersonaNombre: { type: "string", title: "Nombre Segunda Persona Notificada (Opcional)" },
         segundaPersonaTipoDocumento: { type: "string", title: "Tipo Doc. Segunda Persona", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
         segundaPersonaDocumento: { type: "string", title: "Identificación Segunda Persona" },
@@ -49,15 +49,35 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         testigoNombre: { type: "string", title: "Nombre del Testigo" },
         testigoDocumento: { type: "string", title: "Cédula del Testigo" },
         testigoCargo: { type: "string", title: "Cargo o Relación del Testigo" },
-        observaciones: { type: "string", title: "Observaciones Adicionales" },
+        observaciones: { type: "string", title: "Observaciones Adicionales", format: "textarea" },
       },
     },
     uiSchema: {
       sections: [
-        { id: "coordinador", title: "1. Declaración del Coordinador Notificador", fields: ["coordinadorNombre", "coordinadorDocumento", "institucionRed"] },
-        { id: "fallecido", title: "2. Donante Fallecido y Consulta al RND", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "codigoConsultaRND", "entidadConsultaRND", "horaConsultaRND", "fechaConsultaRND"] },
-        { id: "notificado", title: "3. Persona Notificada y Notificación Legal", fields: ["notificadoNombre", "notificadoTipoDocumento", "notificadoDocumento", "notificadoParentesco", "ciudadNotificacion", "fechaNotificacion"] },
-        { id: "firmas", title: "4. Segunda Persona, Firmas y Observaciones", fields: ["segundaPersonaNombre", "segundaPersonaTipoDocumento", "segundaPersonaDocumento", "segundaPersonaParentesco", "coordinadorCargo", "testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"] },
+        {
+          id: "coordinador",
+          title: "1. Declaración del Coordinador Notificador",
+          description: "Datos del Coordinador Operativo de Donación y Trasplantes que efectúa la notificación formal ante la Red.",
+          fields: ["coordinadorNombre", "coordinadorDocumento", "institucionRed"],
+        },
+        {
+          id: "fallecido",
+          title: "2. Donante Fallecido y Consulta al RND",
+          description: "Identificación del fallecido y constancia de consulta al Registro Nacional de Donantes (RND) del Instituto Nacional de Salud.",
+          fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "codigoConsultaRND", "entidadConsultaRND", "horaConsultaRND", "fechaConsultaRND"],
+        },
+        {
+          id: "notificado",
+          title: "3. Persona Notificada y Notificación Legal",
+          description: "Datos de la persona notificada en calidad de deudo o familiar responsable según la Ley 1805 de 2016.",
+          fields: ["notificadoNombre", "notificadoTipoDocumento", "notificadoDocumento", "notificadoParentesco", "ciudadNotificacion", "fechaNotificacion"],
+        },
+        {
+          id: "firmas",
+          title: "4. Segunda Persona, Firmas y Constancia Institucional",
+          description: "Constancia de entrega formal de la notificación según el formato institucional de la Ley 1805 (sin checkboxes de oposición no contemplados por la ley). Datos de segunda persona (si aplica), coordinador y testigo.",
+          fields: ["segundaPersonaNombre", "segundaPersonaTipoDocumento", "segundaPersonaDocumento", "segundaPersonaParentesco", "coordinadorCargo", "testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"],
+        },
       ],
     },
     mappingConfig: [
@@ -76,13 +96,13 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_3",
     name: "Anexo 3 — Consentimiento informado familiar de donación",
     category: "LEGAL",
-    versionNumber: "2.2.0",
+    versionNumber: "2.3.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "representanteNombre", "representanteDocumento", "autorizaExtraccion"],
       properties: {
-        fecha: { type: "string", title: "Fecha del Consentimiento (AAAA-MM-DD)" },
-        hora: { type: "string", title: "Hora del Consentimiento (HH:MM)" },
+        fecha: { type: "string", title: "Fecha del Consentimiento", format: "date" },
+        hora: { type: "string", title: "Hora del Consentimiento", format: "time" },
         ciudad: { type: "string", title: "Ciudad donde se Otorga" },
         representanteNombre: { type: "string", title: "Nombres y Apellidos del Representante Legal (1)" },
         representanteTipoDocumento: { type: "string", title: "Tipo Doc. Representante (1)", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
@@ -98,7 +118,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         fallecidoLugarExpedicion: { type: "string", title: "Lugar de Expedición del Documento" },
         autorizaExtraccion: { type: "boolean", title: "¿Autoriza libremente la extracción de componentes anatómicos? (SÍ / NO)" },
         finalidadTrasplante: { type: "boolean", title: "Finalidad Trasplante (SÍ / NO)", default: true },
-        observacionesRestricciones: { type: "string", title: "Observaciones o Restricciones Expresadas por la Familia" },
+        observacionesRestricciones: { type: "string", title: "Observaciones o Restricciones Expresadas por la Familia", format: "textarea" },
         testigoNombre: { type: "string", title: "Nombre del Testigo" },
         testigoDocumento: { type: "string", title: "Documento del Testigo" },
         testigoParentesco: { type: "string", title: "Parentesco / Relación del Testigo" },
@@ -110,11 +130,36 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     },
     uiSchema: {
       sections: [
-        { id: "encabezado", title: "1. Lugar y Fecha del Consentimiento", fields: ["fecha", "hora", "ciudad"] },
-        { id: "representantes", title: "2. Representantes Legales que Otorgan el Consentimiento", fields: ["representanteNombre", "representanteTipoDocumento", "representanteDocumento", "representanteParentesco", "segundoRepresentanteNombre", "segundoRepresentanteTipoDocumento", "segundoRepresentanteDocumento", "segundoRepresentanteParentesco"] },
-        { id: "fallecido", title: "3. Donante Fallecido", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "fallecidoLugarExpedicion"] },
-        { id: "autorizacion", title: "4. Autorización y Finalidad", fields: ["autorizaExtraccion", "finalidadTrasplante", "observacionesRestricciones"] },
-        { id: "firmas", title: "5. Testigo y Entrevistadores de la Red", fields: ["testigoNombre", "testigoDocumento", "testigoParentesco", "entrevistadorPrincipalNombre", "entrevistadorPrincipalRegistro", "segundoEntrevistadorNombre", "segundoEntrevistadorDocumento"] },
+        {
+          id: "encabezado",
+          title: "1. Lugar y Fecha del Consentimiento",
+          description: "Lugar geográfico, fecha y hora en que se otorga el consentimiento informado de la familia.",
+          fields: ["fecha", "hora", "ciudad"],
+        },
+        {
+          id: "representantes",
+          title: "2. Representantes Legales que Otorgan el Consentimiento",
+          description: "Datos de identificación y parentesco de los deudos autorizados por prelación legal (primer y segundo representante).",
+          fields: ["representanteNombre", "representanteTipoDocumento", "representanteDocumento", "representanteParentesco", "segundoRepresentanteNombre", "segundoRepresentanteTipoDocumento", "segundoRepresentanteDocumento", "segundoRepresentanteParentesco"],
+        },
+        {
+          id: "fallecido",
+          title: "3. Donante Fallecido",
+          description: "Identificación civil completa del donante fallecido y lugar de expedición de su documento.",
+          fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "fallecidoLugarExpedicion"],
+        },
+        {
+          id: "autorizacion",
+          title: "4. Autorización y Finalidad Terapéutica",
+          description: "Manifestación libre y voluntaria sobre la autorización de extracción de órganos y tejidos con fines de trasplante.",
+          fields: ["autorizaExtraccion", "finalidadTrasplante", "observacionesRestricciones"],
+        },
+        {
+          id: "firmas",
+          title: "5. Testigo y Entrevistadores de la Red",
+          description: "Firmas e identificación del testigo y los profesionales de la Red a cargo de la entrevista familiar.",
+          fields: ["testigoNombre", "testigoDocumento", "testigoParentesco", "entrevistadorPrincipalNombre", "entrevistadorPrincipalRegistro", "segundoEntrevistadorNombre", "segundoEntrevistadorDocumento"],
+        },
       ],
     },
     mappingConfig: [
@@ -613,15 +658,15 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_1",
     name: "Anexo 1 — Formato de valoración y alerta de posible donante",
     category: "CLINICAL",
-    versionNumber: "3.0.0",
+    versionNumber: "3.1.0",
     jsonSchema: {
       type: "object",
       required: ["nombreDonante", "numeroIdentificacion", "ipsGeneradora", "diagnosticoPosibleDonante"],
       properties: {
         // A. Información de la Alerta
         codigoRnd: { type: "string", title: "Código / Consulta RND" },
-        fechaNotificacion: { type: "string", title: "Fecha de Notificación Posible Donante (AAAA-MM-DD)" },
-        horaNotificacion: { type: "string", title: "Hora de Notificación (HH:MM)" },
+        fechaNotificacion: { type: "string", title: "Fecha de Notificación Posible Donante", format: "date" },
+        horaNotificacion: { type: "string", title: "Hora de Notificación", format: "time" },
         medicoCoordinador: { type: "string", title: "Médico Coordinador a Cargo" },
         regionalGeneradora: { type: "string", title: "Regional Generadora", default: "Regional 3" },
 
@@ -634,8 +679,8 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         sexo: { type: "string", title: "Sexo Biológico", enum: ["MASCULINO", "FEMENINO"] },
         etnia: { type: "string", title: "Etnia", enum: ["MESTIZO", "AFROCOLOMBIANO", "INDIGENA", "BLANCO", "ROM", "OTRO"] },
         nacionalidad: { type: "string", title: "Nacionalidad", default: "Colombiana" },
-        fechaIngresoIps: { type: "string", title: "Fecha de Ingreso a IPS (AAAA-MM-DD)" },
-        horaIngresoIps: { type: "string", title: "Hora de Ingreso a IPS (HH:MM)" },
+        fechaIngresoIps: { type: "string", title: "Fecha de Ingreso a IPS", format: "date" },
+        horaIngresoIps: { type: "string", title: "Hora de Ingreso a IPS", format: "time" },
         glasgowIngreso: { type: "number", title: "Glasgow al Ingreso a IPS (3-15)" },
         glasgowAlerta: { type: "number", title: "Glasgow de la Alerta (3-15)" },
         grupoSanguineo: { type: "string", title: "Grupo Sanguíneo", enum: ["O", "A", "B", "AB"] },
@@ -645,7 +690,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         servicioHospitalarioCual: { type: "string", title: "¿Cuál servicio hospitalario?" },
         remitido: { type: "boolean", title: "¿Paciente Remitido de otra institución?" },
         estanciaHospitalariaDias: { type: "number", title: "Estancia Hospitalaria (días, incluido tiempo en otra IPS)" },
-        diagnosticoPosibleDonante: { type: "string", title: "Diagnóstico del Paciente Posible Donante" },
+        diagnosticoPosibleDonante: { type: "string", title: "Diagnóstico del Paciente Posible Donante", format: "textarea" },
 
         // C. Antecedentes
         antPatologicos: { type: "boolean", title: "Patológicos (Sí/No)" },
@@ -678,7 +723,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         antInfeccionManejo: { type: "string", title: "Infección (Manejo)" },
         antIntervencionesQuirurgicas: { type: "boolean", title: "Intervenciones Quirúrgicas (Sí/No)" },
         antIntervencionesQuirurgicasCuales: { type: "string", title: "Intervenciones Quirúrgicas (Cuáles)" },
-        antOtrosObservaciones: { type: "string", title: "Otros Antecedentes / Observaciones" },
+        antOtrosObservaciones: { type: "string", title: "Otros Antecedentes / Observaciones", format: "textarea" },
 
         // D. Examen Físico
         pesoKg: { type: "number", title: "Peso (kg)" },
@@ -698,7 +743,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         temperaturaCorporal: { type: "number", title: "Temperatura Corporal (°C)" },
         spo2: { type: "number", title: "Saturación de Oxígeno - SpO2 (%)" },
         diuresisCcHora: { type: "number", title: "Diuresis (cc/hora)" },
-        examenFisicoOtrosObservaciones: { type: "string", title: "Examen Físico: Otros / Observaciones" },
+        examenFisicoOtrosObservaciones: { type: "string", title: "Examen Físico: Otros / Observaciones", format: "textarea" },
 
         // E. Monitoreo
         tieneVentilacionMecanica: { type: "boolean", title: "Tiempo de Ventilación Mecánica (Sí/No)" },
@@ -726,7 +771,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         transfusionesTipo: { type: "string", title: "Transfusiones (Tipo)" },
         transfusionesUnidades: { type: "number", title: "Transfusiones (No. de Unidades)" },
         transfusionesFechaHoraUltima: { type: "string", title: "Fecha y Hora de la última unidad" },
-        manejoObservaciones: { type: "string", title: "Observaciones de Manejo Clínico" },
+        manejoObservaciones: { type: "string", title: "Observaciones de Manejo Clínico", format: "textarea" },
 
         // G. Medicamentos (Estructura Repetible)
         medicamentos: {
@@ -804,7 +849,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         // Otros
         labParcialOrina: { type: "string", title: "Parcial de Orina (Hallazgos)" },
         labCultivos: { type: "string", title: "Cultivos (Microbiología)" },
-        labObservaciones: { type: "string", title: "Observaciones Generales de Laboratorio" },
+        labObservaciones: { type: "string", title: "Observaciones Generales de Laboratorio", format: "textarea" },
 
         // Cierre y Firma
         medicoCoordinadorFirma: { type: "string", title: "Firma / Nombre del Médico Coordinador" },
