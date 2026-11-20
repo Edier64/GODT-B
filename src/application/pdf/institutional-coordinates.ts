@@ -1668,7 +1668,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       minFontSize: 5.5,
       isBold: true,
       fieldName: "Código Consulta RND",
-      getValue: (d, meta) => d.codigoConsultaRnd || d.codigoConsultaRND || d.codigoRnd || meta.rndCode || "",
+      getValue: (d, meta) => d.codigoConsultaRND || d.codigoConsultaRnd || d.codigoRnd || meta.rndCode || "",
     },
     {
       pageIndex: 0,
@@ -1679,7 +1679,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       fontSize: 7.5,
       minFontSize: 6,
       fieldName: "Entidad Administradora RND",
-      getValue: (d) => d.entidadRnd || "Instituto Nacional de Salud",
+      getValue: (d) => d.entidadConsultaRND || d.entidadRnd || "Instituto Nacional de Salud",
     },
     {
       pageIndex: 0,
@@ -1690,7 +1690,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       fontSize: 7.5,
       minFontSize: 6,
       fieldName: "Hora Consulta RND",
-      getValue: (d) => d.horaRnd || d.horaConsulta || d.horaNotificacion || "",
+      getValue: (d) => d.horaConsultaRND || d.horaRnd || d.horaConsulta || "",
     },
     {
       pageIndex: 0,
@@ -1702,7 +1702,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       minFontSize: 6,
       fieldName: "Día Consulta RND",
       getValue: (d, meta) => {
-        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        const raw = d.fechaConsultaRND || d.fechaRnd || d.fechaConsulta || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
         if (!raw) return "";
         const p = raw.split("-");
         return p.length === 3 ? p[2].slice(0, 2) : "";
@@ -1718,7 +1718,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       minFontSize: 6,
       fieldName: "Mes Consulta RND",
       getValue: (d, meta) => {
-        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        const raw = d.fechaConsultaRND || d.fechaRnd || d.fechaConsulta || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
         if (!raw) return "";
         const p = raw.split("-");
         if (p.length === 3) {
@@ -1739,7 +1739,7 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       minFontSize: 6,
       fieldName: "Año Consulta RND",
       getValue: (d, meta) => {
-        const raw = d.fechaRnd || d.fechaConsulta || d.fechaNotificacion || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
+        const raw = d.fechaConsultaRND || d.fechaRnd || d.fechaConsulta || (meta.generatedAt ? new Date(meta.generatedAt).toISOString().split("T")[0] : "");
         if (!raw) return "";
         const p = raw.split("-");
         return p.length === 3 ? p[0] : "";
@@ -1898,6 +1898,17 @@ export const INSTITUTIONAL_OVERLAYS: Record<string, FieldCoordinate[]> = {
       isBold: true,
       fieldName: "Segunda Persona Nombre",
       getValue: (d) => d.segundaPersonaNombre || d.segundoDeudoNombre || "",
+    },
+    {
+      pageIndex: 1,
+      x: 58,
+      y: 642,
+      maxWidth: 55,
+      maxHeight: 11,
+      fontSize: 7.5,
+      minFontSize: 6,
+      fieldName: "Segunda Persona Tipo Documento",
+      getValue: (d) => d.segundaPersonaTipoDocumento || "",
     },
     {
       pageIndex: 1,

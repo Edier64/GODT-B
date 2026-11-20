@@ -20,7 +20,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_2",
     name: "Anexo 2 — Notificación a deudos sobre la Ley 1805 de 2016",
     category: "LEGAL",
-    versionNumber: "2.1.0",
+    versionNumber: "2.2.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "notificadoNombre", "notificadoDocumento"],
@@ -43,6 +43,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         ciudadNotificacion: { type: "string", title: "Ciudad de Notificación" },
         fechaNotificacion: { type: "string", title: "Fecha de Notificación (AAAA-MM-DD)" },
         segundaPersonaNombre: { type: "string", title: "Nombre Segunda Persona Notificada (Opcional)" },
+        segundaPersonaTipoDocumento: { type: "string", title: "Tipo Doc. Segunda Persona", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
         segundaPersonaDocumento: { type: "string", title: "Identificación Segunda Persona" },
         segundaPersonaParentesco: { type: "string", title: "Parentesco Segunda Persona" },
         testigoNombre: { type: "string", title: "Nombre del Testigo" },
@@ -56,7 +57,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         { id: "coordinador", title: "1. Declaración del Coordinador Notificador", fields: ["coordinadorNombre", "coordinadorDocumento", "institucionRed"] },
         { id: "fallecido", title: "2. Donante Fallecido y Consulta al RND", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "codigoConsultaRND", "entidadConsultaRND", "horaConsultaRND", "fechaConsultaRND"] },
         { id: "notificado", title: "3. Persona Notificada y Notificación Legal", fields: ["notificadoNombre", "notificadoTipoDocumento", "notificadoDocumento", "notificadoParentesco", "ciudadNotificacion", "fechaNotificacion"] },
-        { id: "firmas", title: "4. Segunda Persona, Firmas y Observaciones", fields: ["segundaPersonaNombre", "segundaPersonaDocumento", "segundaPersonaParentesco", "coordinadorCargo", "testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"] },
+        { id: "firmas", title: "4. Segunda Persona, Firmas y Observaciones", fields: ["segundaPersonaNombre", "segundaPersonaTipoDocumento", "segundaPersonaDocumento", "segundaPersonaParentesco", "coordinadorCargo", "testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"] },
       ],
     },
     mappingConfig: [
@@ -75,7 +76,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_3",
     name: "Anexo 3 — Consentimiento informado familiar de donación",
     category: "LEGAL",
-    versionNumber: "2.1.0",
+    versionNumber: "2.2.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "representanteNombre", "representanteDocumento", "autorizaExtraccion"],
@@ -88,6 +89,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
         representanteDocumento: { type: "string", title: "Documento de Identidad del Representante (1)" },
         representanteParentesco: { type: "string", title: "Parentesco del Representante (1)" },
         segundoRepresentanteNombre: { type: "string", title: "Nombres y Apellidos del Representante Legal (2 - Opcional)" },
+        segundoRepresentanteTipoDocumento: { type: "string", title: "Tipo Doc. Representante (2)", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
         segundoRepresentanteDocumento: { type: "string", title: "Documento de Identidad del Representante (2)" },
         segundoRepresentanteParentesco: { type: "string", title: "Parentesco del Representante (2)" },
         fallecidoNombre: { type: "string", title: "Nombres y Apellidos del Donante Fallecido" },
@@ -109,7 +111,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     uiSchema: {
       sections: [
         { id: "encabezado", title: "1. Lugar y Fecha del Consentimiento", fields: ["fecha", "hora", "ciudad"] },
-        { id: "representantes", title: "2. Representantes Legales que Otorgan el Consentimiento", fields: ["representanteNombre", "representanteTipoDocumento", "representanteDocumento", "representanteParentesco", "segundoRepresentanteNombre", "segundoRepresentanteDocumento", "segundoRepresentanteParentesco"] },
+        { id: "representantes", title: "2. Representantes Legales que Otorgan el Consentimiento", fields: ["representanteNombre", "representanteTipoDocumento", "representanteDocumento", "representanteParentesco", "segundoRepresentanteNombre", "segundoRepresentanteTipoDocumento", "segundoRepresentanteDocumento", "segundoRepresentanteParentesco"] },
         { id: "fallecido", title: "3. Donante Fallecido", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "fallecidoLugarExpedicion"] },
         { id: "autorizacion", title: "4. Autorización y Finalidad", fields: ["autorizaExtraccion", "finalidadTrasplante", "observacionesRestricciones"] },
         { id: "firmas", title: "5. Testigo y Entrevistadores de la Red", fields: ["testigoNombre", "testigoDocumento", "testigoParentesco", "entrevistadorPrincipalNombre", "entrevistadorPrincipalRegistro", "segundoEntrevistadorNombre", "segundoEntrevistadorDocumento"] },
