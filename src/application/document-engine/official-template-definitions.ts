@@ -20,39 +20,43 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_2",
     name: "Anexo 2 — Notificación a deudos sobre la Ley 1805 de 2016",
     category: "LEGAL",
-    versionNumber: "1.0.0",
+    versionNumber: "2.1.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "notificadoNombre", "notificadoDocumento"],
       properties: {
         coordinadorNombre: { type: "string", title: "Nombre del Coordinador Operativo" },
-        coordinadorDocumento: { type: "string", title: "Cédula del Coordinador" },
+        coordinadorDocumento: { type: "string", title: "Cédula de Ciudadanía del Coordinador" },
+        coordinadorCargo: { type: "string", title: "Cargo del Coordinador", default: "Coordinador Operativo de Donación y Trasplantes" },
         institucionRed: { type: "string", title: "Institución ante la Red de Donación" },
         fallecidoNombre: { type: "string", title: "Nombre del Fallecido" },
         fallecidoTipoDocumento: { type: "string", title: "Tipo de Documento", enum: ["CC", "TI", "CE", "PASAPORTE", "MS", "OTRO"] },
-        fallecidoDocumento: { type: "string", title: "Número de Identificación" },
+        fallecidoDocumento: { type: "string", title: "Número de Identificación del Fallecido" },
         codigoConsultaRND: { type: "string", title: "Código de Consulta al RND" },
-        entidadConsultaRND: { type: "string", title: "Entidad que Certifica RND" },
-        fechaHoraConsultaRND: { type: "string", title: "Fecha y Hora Consulta RND" },
+        entidadConsultaRND: { type: "string", title: "Entidad que Certifica RND", default: "Instituto Nacional de Salud" },
+        horaConsultaRND: { type: "string", title: "Hora Consulta RND (HH:MM)" },
+        fechaConsultaRND: { type: "string", title: "Fecha Consulta RND (AAAA-MM-DD)" },
         notificadoNombre: { type: "string", title: "Nombre de la Persona Notificada" },
         notificadoTipoDocumento: { type: "string", title: "Tipo Doc. Notificado", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
         notificadoDocumento: { type: "string", title: "Identificación de la Persona Notificada" },
-        notificadoParentesco: { type: "string", title: "Parentesco con el Fallecido" },
+        notificadoParentesco: { type: "string", title: "Parentesco / Calidad con el Fallecido" },
         ciudadNotificacion: { type: "string", title: "Ciudad de Notificación" },
-        fechaNotificacion: { type: "string", title: "Fecha de Notificación" },
+        fechaNotificacion: { type: "string", title: "Fecha de Notificación (AAAA-MM-DD)" },
+        segundaPersonaNombre: { type: "string", title: "Nombre Segunda Persona Notificada (Opcional)" },
+        segundaPersonaDocumento: { type: "string", title: "Identificación Segunda Persona" },
+        segundaPersonaParentesco: { type: "string", title: "Parentesco Segunda Persona" },
         testigoNombre: { type: "string", title: "Nombre del Testigo" },
         testigoDocumento: { type: "string", title: "Cédula del Testigo" },
         testigoCargo: { type: "string", title: "Cargo o Relación del Testigo" },
         observaciones: { type: "string", title: "Observaciones Adicionales" },
-        constanciaEntregaCertificado: { type: "boolean", title: "Constancia de entrega del certificado de consulta RND", default: true },
       },
     },
     uiSchema: {
       sections: [
-        { id: "coordinador", title: "1. Datos del Coordinador Notificador", fields: ["coordinadorNombre", "coordinadorDocumento", "institucionRed"] },
-        { id: "fallecido", title: "2. Donante Fallecido y Consulta al RND", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "codigoConsultaRND", "entidadConsultaRND", "fechaHoraConsultaRND"] },
-        { id: "notificado", title: "3. Persona Notificada y Notificación Legal", fields: ["notificadoNombre", "notificadoTipoDocumento", "notificadoDocumento", "notificadoParentesco", "ciudadNotificacion", "fechaNotificacion", "constanciaEntregaCertificado"] },
-        { id: "testigo", title: "4. Testigo y Observaciones", fields: ["testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"] },
+        { id: "coordinador", title: "1. Declaración del Coordinador Notificador", fields: ["coordinadorNombre", "coordinadorDocumento", "institucionRed"] },
+        { id: "fallecido", title: "2. Donante Fallecido y Consulta al RND", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "codigoConsultaRND", "entidadConsultaRND", "horaConsultaRND", "fechaConsultaRND"] },
+        { id: "notificado", title: "3. Persona Notificada y Notificación Legal", fields: ["notificadoNombre", "notificadoTipoDocumento", "notificadoDocumento", "notificadoParentesco", "ciudadNotificacion", "fechaNotificacion"] },
+        { id: "firmas", title: "4. Segunda Persona, Firmas y Observaciones", fields: ["segundaPersonaNombre", "segundaPersonaDocumento", "segundaPersonaParentesco", "coordinadorCargo", "testigoNombre", "testigoDocumento", "testigoCargo", "observaciones"] },
       ],
     },
     mappingConfig: [
@@ -71,26 +75,28 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_3",
     name: "Anexo 3 — Consentimiento informado familiar de donación",
     category: "LEGAL",
-    versionNumber: "1.0.0",
+    versionNumber: "2.1.0",
     jsonSchema: {
       type: "object",
       required: ["fallecidoNombre", "fallecidoDocumento", "representanteNombre", "representanteDocumento", "autorizaExtraccion"],
       properties: {
-        fecha: { type: "string", title: "Fecha" },
-        hora: { type: "string", title: "Hora" },
-        ciudad: { type: "string", title: "Ciudad" },
-        representanteNombre: { type: "string", title: "Nombre del Representante Legal" },
-        representanteDocumento: { type: "string", title: "Documento de Identidad del Representante" },
-        representanteParentesco: { type: "string", title: "Parentesco" },
-        fallecidoNombre: { type: "string", title: "Nombre del Fallecido" },
+        fecha: { type: "string", title: "Fecha del Consentimiento (AAAA-MM-DD)" },
+        hora: { type: "string", title: "Hora del Consentimiento (HH:MM)" },
+        ciudad: { type: "string", title: "Ciudad donde se Otorga" },
+        representanteNombre: { type: "string", title: "Nombres y Apellidos del Representante Legal (1)" },
+        representanteTipoDocumento: { type: "string", title: "Tipo Doc. Representante (1)", enum: ["CC", "TI", "CE", "PASAPORTE", "OTRO"] },
+        representanteDocumento: { type: "string", title: "Documento de Identidad del Representante (1)" },
+        representanteParentesco: { type: "string", title: "Parentesco del Representante (1)" },
+        segundoRepresentanteNombre: { type: "string", title: "Nombres y Apellidos del Representante Legal (2 - Opcional)" },
+        segundoRepresentanteDocumento: { type: "string", title: "Documento de Identidad del Representante (2)" },
+        segundoRepresentanteParentesco: { type: "string", title: "Parentesco del Representante (2)" },
+        fallecidoNombre: { type: "string", title: "Nombres y Apellidos del Donante Fallecido" },
         fallecidoTipoDocumento: { type: "string", title: "Tipo de Documento", enum: ["RC", "TI", "CC", "PASAPORTE", "MS", "OTRO"] },
-        fallecidoDocumento: { type: "string", title: "Número de Identificación" },
+        fallecidoDocumento: { type: "string", title: "Número de Identificación del Donante" },
         fallecidoLugarExpedicion: { type: "string", title: "Lugar de Expedición del Documento" },
-        criterioFallecimiento: { type: "string", title: "Criterio de Muerte", enum: ["MUERTE_ENCEFALICA", "PARADA_CARDIORRESPIRATORIA"] },
-        autorizaExtraccion: { type: "boolean", title: "¿Autoriza libremente la extracción de componentes anatómicos?" },
-        finalidadTrasplante: { type: "boolean", title: "Finalidad Trasplante", default: true },
-        observacionesRestricciones: { type: "string", title: "Observaciones o Restricciones Familiares" },
-        autorizaMuestrasInmunologia: { type: "boolean", title: "Autoriza toma de muestras para inmunología y serología", default: true },
+        autorizaExtraccion: { type: "boolean", title: "¿Autoriza libremente la extracción de componentes anatómicos? (SÍ / NO)" },
+        finalidadTrasplante: { type: "boolean", title: "Finalidad Trasplante (SÍ / NO)", default: true },
+        observacionesRestricciones: { type: "string", title: "Observaciones o Restricciones Expresadas por la Familia" },
         testigoNombre: { type: "string", title: "Nombre del Testigo" },
         testigoDocumento: { type: "string", title: "Documento del Testigo" },
         testigoParentesco: { type: "string", title: "Parentesco / Relación del Testigo" },
@@ -102,10 +108,10 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     },
     uiSchema: {
       sections: [
-        { id: "encabezado", title: "1. Información de Lugar y Fecha", fields: ["fecha", "hora", "ciudad"] },
-        { id: "representante", title: "2. Representante(s) Legal(es) que Consienten", fields: ["representanteNombre", "representanteDocumento", "representanteParentesco"] },
-        { id: "donante", title: "3. Donante y Criterio de Fallecimiento", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "fallecidoLugarExpedicion", "criterioFallecimiento"] },
-        { id: "declaracion", title: "4. Consentimiento Informado y Finalidades", fields: ["autorizaExtraccion", "finalidadTrasplante", "observacionesRestricciones", "autorizaMuestrasInmunologia"] },
+        { id: "encabezado", title: "1. Lugar y Fecha del Consentimiento", fields: ["fecha", "hora", "ciudad"] },
+        { id: "representantes", title: "2. Representantes Legales que Otorgan el Consentimiento", fields: ["representanteNombre", "representanteTipoDocumento", "representanteDocumento", "representanteParentesco", "segundoRepresentanteNombre", "segundoRepresentanteDocumento", "segundoRepresentanteParentesco"] },
+        { id: "fallecido", title: "3. Donante Fallecido", fields: ["fallecidoNombre", "fallecidoTipoDocumento", "fallecidoDocumento", "fallecidoLugarExpedicion"] },
+        { id: "autorizacion", title: "4. Autorización y Finalidad", fields: ["autorizaExtraccion", "finalidadTrasplante", "observacionesRestricciones"] },
         { id: "firmas", title: "5. Testigo y Entrevistadores de la Red", fields: ["testigoNombre", "testigoDocumento", "testigoParentesco", "entrevistadorPrincipalNombre", "entrevistadorPrincipalRegistro", "segundoEntrevistadorNombre", "segundoEntrevistadorDocumento"] },
       ],
     },
@@ -605,7 +611,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
     templateCode: "anexo_1",
     name: "Anexo 1 — Formato de valoración y alerta de posible donante",
     category: "CLINICAL",
-    versionNumber: "2.0.0",
+    versionNumber: "3.0.0",
     jsonSchema: {
       type: "object",
       required: ["nombreDonante", "numeroIdentificacion", "ipsGeneradora", "diagnosticoPosibleDonante"],
@@ -800,8 +806,6 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
 
         // Cierre y Firma
         medicoCoordinadorFirma: { type: "string", title: "Firma / Nombre del Médico Coordinador" },
-        registroMedicoCoordinador: { type: "string", title: "Registro Médico del Coordinador" },
-        notasInstitucionales: { type: "string", title: "Notas Institucionales" },
       },
     },
     uiSchema: {
@@ -895,7 +899,7 @@ export const OFFICIAL_TEMPLATE_DEFINITIONS: ReadonlyArray<OfficialTemplateDefini
             "labPh", "labPco2", "labPo2", "labHco3", "labBe",
             "labPt", "labPtt", "labInr",
             "labParcialOrina", "labCultivos", "labObservaciones",
-            "medicoCoordinadorFirma", "registroMedicoCoordinador", "notasInstitucionales",
+            "medicoCoordinadorFirma",
           ],
         },
       ],
@@ -1422,10 +1426,7 @@ export async function seedOfficialTemplates(prisma: PrismaService, adminUserId?:
           authorizedById: adminId,
         },
       });
-    } else if (
-      existingVersion.status !== "PUBLISHED" ||
-      existingVersion.definitionHash !== definitionHash
-    ) {
+    } else if (existingVersion.status !== "PUBLISHED") {
       await prisma.templateVersion.update({
         where: { id: existingVersion.id },
         data: {
@@ -1436,6 +1437,10 @@ export async function seedOfficialTemplates(prisma: PrismaService, adminUserId?:
           definitionHash,
         },
       });
+    } else if (existingVersion.definitionHash !== definitionHash) {
+      console.warn(
+        `[SEED] Plantilla ${def.templateCode} v${def.versionNumber} ya está PUBLISHED e inmutable en BD. Incrementar versión para aplicar cambios.`,
+      );
     }
 
     count++;
